@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#FF6F00</color>
+    <color name="accent_light">#FFA000</color>
+    <color name="background">#F5F7FB</color>
+    <color name="badge_new">#1B5E20</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="divider">#E0E0E0</color>
+    <color name="green">#2E7D32</color>
+    <color name="green_light">#4CAF50</color>
+    <color name="new_entry_bg">#E8F5E9</color>
+    <color name="primary">#1565C0</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="primary_light">#1976D2</color>
+    <color name="red">#C62828</color>
+    <color name="red_light">#F44336</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text_hint">#9E9E9E</color>
+    <color name="text_primary">#1A1A2E</color>
+    <color name="text_secondary">#5C6370</color>
+    <color name="toolbar_text">#FFFFFF</color>
+    <color name="yellow">#F57F17</color>
+    <string name="app_name">MIT Attendance</string>
+    <string name="btn_login">Sign In</string>
+    <string name="hint_email">Email ID (e.g. name@mit.asia)</string>
+    <string name="hint_password">Password</string>
+    <string name="hint_semester">Select Semester</string>
+    <string name="loading">Please wait…</string>
+    <string name="login_subtitle">Student Attendance Tracker</string>
+    <string name="login_title">MIT ERP</string>
+    <string name="menu_logout">Sign Out</string>
+    <string name="menu_notifications">Notifications</string>
+    <string name="menu_update">Check for Updates</string>
+    <string name="no_records">No attendance records yet.\nTap the refresh button below.</string>
+    <string name="no_subjects">No subjects found.\nPull down to refresh.</string>
+    <style name="BadgeStyle">
+        <item name="android:background">@drawable/badge_background</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:paddingStart">6dp</item>
+        <item name="android:paddingEnd">6dp</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingBottom">2dp</item>
+    </style>
+    <style name="CardStyle" parent="Widget.MaterialComponents.CardView">
+        <item name="cardElevation">4dp</item>
+        <item name="cardCornerRadius">12dp</item>
+        <item name="android:foreground">?attr/selectableItemBackground</item>
+    </style>
+    <style name="Theme.MITAttendance" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/primary_dark</item>
+        <item name="android:navigationBarColor">@color/primary_dark</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MaterialComponents.MaterialAlertDialog</item>
+    </style>
+    <style name="Theme.MITAttendance.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/primary</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_notification</item>
+        <item name="postSplashScreenTheme">@style/Theme.MITAttendance</item>
+    </style>
+    <style name="ToolbarStyle" parent="Widget.MaterialComponents.Toolbar.Primary">
+        <item name="android:background">@color/primary</item>
+        <item name="titleTextColor">@color/toolbar_text</item>
+        <item name="subtitleTextColor">@color/toolbar_text</item>
+    </style>
+</resources>
