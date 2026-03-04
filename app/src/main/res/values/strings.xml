@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MIT Attendance</string>
+    <string name="login_title">MIT ERP</string>
+    <string name="login_subtitle">Student Attendance Tracker</string>
+    <string name="hint_email">Email ID (e.g. name@mit.asia)</string>
+    <string name="hint_password">Password</string>
+    <string name="hint_semester">Select Semester</string>
+    <string name="btn_login">Sign In</string>
+    <string name="loading">Please wait…</string>
+    <string name="no_subjects">No subjects found.\nPull down to refresh.</string>
+    <string name="no_records">No attendance records yet.\nTap the refresh button below.</string>
+    <string name="menu_notifications">Notifications</string>
+    <string name="menu_update">Check for Updates</string>
+    <string name="menu_logout">Sign Out</string>
+</resources>
