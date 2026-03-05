@@ -22,7 +22,10 @@ class Converters {
  */
 data class SubjectWithNewCount(
     @Embedded val entity: SubjectEntity,
-    val newCount: Int
+    val newCount: Int,
+    val actualPresent: Int,
+    val actualAbsent: Int,
+    val actualTotal: Int
 )
 
 // ── Subject DAO ───────────────────────────────────────────────────────────────
@@ -35,12 +38,17 @@ interface SubjectDao {
      * Room fires ONE Flow emission per change instead of N per subject.
      */
     @Query("""
-        SELECT s.*, COUNT(CASE WHEN a.isNew = 1 THEN 1 END) AS newCount
-        FROM subjects s
-        LEFT JOIN attendance_records a ON s.subjectId = a.subjectId
-        GROUP BY s.subjectId
-        ORDER BY s.subjectName
-    """)
+    SELECT 
+        s.*,
+        COUNT(CASE WHEN a.isNew = 1 THEN 1 END) AS newCount,
+        COUNT(CASE WHEN a.status = 'P' THEN 1 END) AS actualPresent,
+        COUNT(CASE WHEN a.status = 'A' THEN 1 END) AS actualAbsent,
+        COUNT(a.date) AS actualTotal
+    FROM subjects s
+    LEFT JOIN attendance_records a ON s.subjectId = a.subjectId
+    GROUP BY s.subjectId
+    ORDER BY s.subjectName
+""")
     fun getAllSubjectsWithNewCounts(): Flow<List<SubjectWithNewCount>>
 
     @Query("SELECT * FROM subjects ORDER BY subjectName")

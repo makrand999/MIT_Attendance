@@ -28,15 +28,21 @@ class AttendanceRepository(context: Context) {
 
     fun getSubjectsFlow(): Flow<List<SubjectUiModel>> =
         subjectDao.getAllSubjectsWithNewCounts().map { rows ->
-            rows.map { (entity, newCount) ->
+            rows.map { (entity, newCount, actualPresent, actualAbsent, actualTotal) ->
+                // Use actual DB counts if available, fall back to server counts
+                val present = if (actualTotal > 0) actualPresent else entity.totalPresent
+                val absent  = if (actualTotal > 0) actualAbsent  else entity.totalAbsent
+                val total   = if (actualTotal > 0) actualTotal   else entity.totalLecture
+                val pct     = if (total > 0) (present * 100f / total) else entity.percentage
+
                 SubjectUiModel(
-                    id = entity.subjectId,
-                    name = entity.subjectName,
-                    present = entity.totalPresent,
-                    absent = entity.totalAbsent,
-                    total = entity.totalLecture,
-                    percentage = entity.percentage,
-                    hasNewEntries = newCount > 0
+                    id             = entity.subjectId,
+                    name           = entity.subjectName,
+                    present        = present,
+                    absent         = absent,
+                    total          = total,
+                    percentage     = pct,
+                    hasNewEntries  = newCount > 0
                 )
             }
         }

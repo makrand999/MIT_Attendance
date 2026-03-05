@@ -137,7 +137,7 @@ class SubjectsActivity : AppCompatActivity() {
             R.id.action_update -> {
                 startActivity(
                     Intent(Intent.ACTION_VIEW,
-                        Uri.parse("https://github.com/your-repo/mit-attendance/releases"))
+                        Uri.parse("https://github.com/makrand999/MIT_Attendance"))
                 )
                 true
             }
@@ -174,10 +174,32 @@ class SubjectsActivity : AppCompatActivity() {
             viewModel.subjects.collectLatest { subjects ->
                 adapter.submitList(subjects)
                 binding.tvEmpty.visibility = if (subjects.isEmpty()) View.VISIBLE else View.GONE
+
+                // Overall attendance footer
+                if (subjects.isNotEmpty()) {
+                    val totalPresent = subjects.sumOf { it.present }
+                    val totalClasses = subjects.sumOf { it.total }
+                    val overallPct = if (totalClasses > 0) (totalPresent * 100f / totalClasses) else 0f
+
+                    binding.layoutOverall.visibility = View.VISIBLE
+                    binding.tvOverallStats.text = "$totalPresent / $totalClasses classes attended"
+                    binding.tvOverallPercentage.text = "${overallPct.toInt()}%"
+
+                    val color = when {
+                        overallPct >= 75 -> ContextCompat.getColor(this@SubjectsActivity, R.color.green)
+                        overallPct >= 60 -> ContextCompat.getColor(this@SubjectsActivity, R.color.yellow)
+                        else             -> ContextCompat.getColor(this@SubjectsActivity, R.color.red)
+                    }
+                    binding.tvOverallPercentage.setTextColor(color)
+                    binding.progressBarOverall.progress = overallPct.toInt()
+                    binding.progressBarOverall.progressTintList =
+                        android.content.res.ColorStateList.valueOf(color)
+                } else {
+                    binding.layoutOverall.visibility = View.GONE
+                }
             }
         }
         viewModel.isRefreshing.observe(this) { binding.swipeRefresh.isRefreshing = it }
-        // FIX: SingleLiveEvent — will only fire once, never replays on rotation
         viewModel.error.observe(this) { msg ->
             Snackbar.make(binding.root, msg, Snackbar.LENGTH_LONG).show()
         }

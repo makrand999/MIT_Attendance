@@ -16,7 +16,7 @@ import com.mit.attendance.model.SingleLiveEvent
 import com.mit.attendance.service.AttendanceSyncWorker
 import com.mit.attendance.ui.subjects.SubjectsActivity
 import kotlinx.coroutines.launch
-
+import androidx.appcompat.app.AppCompatDelegate
 // ── Splash Activity ───────────────────────────────────────────────────────────
 
 class SplashActivity : AppCompatActivity() {

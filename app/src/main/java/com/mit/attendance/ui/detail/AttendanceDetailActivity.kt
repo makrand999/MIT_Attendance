@@ -112,7 +112,9 @@ class AttendanceDetailActivity : AppCompatActivity() {
         setupRecyclerView()
         observeData()
 
-        binding.fabRefresh.setOnClickListener { viewModel.fetch() }
+        binding.swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent)
+        binding.swipeRefresh.setOnRefreshListener { viewModel.fetch() }
+       // binding.fabRefresh.setOnClickListener { viewModel.fetch() }
     }
 
     override fun onStop() {
@@ -146,8 +148,11 @@ class AttendanceDetailActivity : AppCompatActivity() {
         }
 
         viewModel.isLoading.observe(this) { loading ->
-            binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
-            binding.fabRefresh.isEnabled = !loading
+            // progress_bar only shows on very first load when list is empty
+            binding.progressBar.visibility =
+                if (loading && adapter.itemCount == 0) View.VISIBLE else View.GONE
+            // swipe refresh spinner stops when done
+            binding.swipeRefresh.isRefreshing = loading
         }
 
         // FIX: SingleLiveEvent — no null check needed, fires once only
