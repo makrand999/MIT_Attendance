@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="primary">#1565C0</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="primary_light">#1976D2</color>
+    <color name="accent">#FF6F00</color>
+    <color name="accent_light">#FFA000</color>
+
+    <!-- Status -->
+    <color name="green">#2E7D32</color>
+    <color name="green_light">#4CAF50</color>
+    <color name="red">#C62828</color>
+    <color name="red_light">#F44336</color>
+    <color name="yellow">#F57F17</color>
+
+    <!-- Backgrounds -->
+    <color name="background">#F5F7FB</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="new_entry_bg">#E8F5E9</color>
+    <color name="surface">#FFFFFF</color>
+
+    <!-- Text -->
+    <color name="text_primary">#1A1A2E</color>
+    <color name="text_secondary">#5C6370</color>
+    <color name="text_hint">#9E9E9E</color>
+
+    <!-- Other -->
+    <color name="divider">#E0E0E0</color>
+    <color name="badge_new">#1B5E20</color>
+    <color name="toolbar_text">#FFFFFF</color>
+</resources>
