@@ -3,18 +3,29 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_practical"
+        android:title="Practical"
+        android:orderInCategory="50"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_notifications"
         android:title="Notifications: ON"
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/action_share"
+        android:title="@string/menu_share"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_update"
-        android:title="Check for Updates"
+        android:title="@string/menu_update"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_logout"
-        android:title="Sign Out"
+        android:title="@string/menu_logout"
         app:showAsAction="never" />
 
 </menu>

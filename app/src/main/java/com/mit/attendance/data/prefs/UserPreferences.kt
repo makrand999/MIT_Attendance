@@ -44,6 +44,10 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it.clear() }
     }
 
+    suspend fun getEmail(): String? {
+        return context.dataStore.data.first()[KEY_EMAIL]
+    }
+
     /**
      * Returns a snapshot of credentials as a [UserCredentials] for one-time use
      * (e.g. in suspend functions that need email/password/semId together).

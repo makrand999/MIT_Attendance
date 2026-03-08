@@ -3,6 +3,7 @@ package com.mit.attendance.model
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.concurrent.atomic.AtomicBoolean
@@ -29,9 +30,10 @@ data class AttendanceApiRecord(
 
 @Entity(tableName = "subjects")
 data class SubjectEntity(
-    @PrimaryKey
-    val subjectId: String,
+    @PrimaryKey 
+    @ColumnInfo(collate = ColumnInfo.NOCASE) // Prevent "Math" vs "math" duplicates
     val subjectName: String,
+    val subjectId: String,
     val totalPresent: Int,
     val totalAbsent: Int,
     val totalLecture: Int,
@@ -39,9 +41,10 @@ data class SubjectEntity(
     val lastUpdated: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "attendance_records", primaryKeys = ["subjectId", "date", "startTime"])
+@Entity(tableName = "attendance_records", primaryKeys = ["subjectName", "date", "startTime"])
 data class AttendanceEntity(
-    val subjectId: String,
+    @ColumnInfo(collate = ColumnInfo.NOCASE)
+    val subjectName: String,
     val date: String,
     val status: String,       // "P" or "A"
     val startTime: String,
@@ -92,19 +95,11 @@ sealed class SyncResult {
     object NoChange : SyncResult()
     object NetworkError : SyncResult()
     object SessionError : SyncResult()
+    object ServerOffline : SyncResult()
 }
 
-// ── SingleLiveEvent — fires exactly once, survives rotation safely ─────────────
-
-/**
- * A LiveData that delivers its value only once per observer registration.
- * Use for one-shot UI events (snackbars, toasts, navigation) to prevent
- * them from re-firing after configuration changes.
- */
 class SingleLiveEvent<T> : MutableLiveData<T>() {
-
     private val pending = AtomicBoolean(false)
-
     override fun observe(owner: LifecycleOwner, observer: Observer<in T>) {
         super.observe(owner) { value ->
             if (pending.compareAndSet(true, false)) {
@@ -112,12 +107,9 @@ class SingleLiveEvent<T> : MutableLiveData<T>() {
             }
         }
     }
-
     override fun setValue(value: T?) {
         pending.set(true)
         super.setValue(value)
     }
-
-    /** Convenience for posting from background threads. */
     fun call(value: T) = postValue(value)
 }

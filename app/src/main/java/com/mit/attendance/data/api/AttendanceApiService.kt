@@ -5,13 +5,24 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mit.attendance.model.*
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.*
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
+
+// ── Session state ─────────────────────────────────────────────────────────────
+//
+//  Alive   → JSESSIONID valid, server returned real JSON data
+//  Dead    → JSESSIONID missing / expired, need to re-login
+//  Offline → Server returned 521 or timed out — do NOT attempt login, retry later
+
+sealed class SessionState {
+    object Alive   : SessionState()
+    object Dead    : SessionState()
+    object Offline : SessionState()
+}
 
 // ── HTTP client singleton ─────────────────────────────────────────────────────
 
@@ -24,12 +35,35 @@ object HttpClientHolder {
 
     private lateinit var persistentJar: PersistentCookieJar
 
+    // Server session lives ~10 min; we conservatively trust ours for 9 min to
+    // avoid an unnecessary network round-trip on every fetch call.
+    private const val SESSION_TTL_MS = 9 * 60 * 1000L
+    private var lastActivityMs: Long = 0L
+
     fun init(context: Context) {
         persistentJar = PersistentCookieJar(context.applicationContext)
 
-        val logging = okhttp3.logging.HttpLoggingInterceptor { message ->
-            Log.d("OkHttp", message)
-        }.apply { level = okhttp3.logging.HttpLoggingInterceptor.Level.BODY }
+        // Logs method, URL, response code and headers only — no body / HTML spam
+        val cleanLogging = Interceptor { chain ->
+            val request = chain.request()
+
+            Log.d("OkHttp", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            Log.d("OkHttp", "➤ REQUEST:  ${request.method} ${request.url}")
+            request.headers.forEach { (name, value) ->
+                Log.d("OkHttp", "   Header: $name = $value")
+            }
+
+            val response = chain.proceed(request)
+
+            Log.d("OkHttp", "◀ RESPONSE BY SERVER: ${response.code} ${response.message}")
+            Log.d("OkHttp", "   URL: ${response.request.url}")
+            response.headers.forEach { (name, value) ->
+                Log.d("OkHttp", "   Header: $name = $value")
+            }
+            Log.d("OkHttp", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            response // Never consume the body here — callers still need it
+        }
 
         client = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -38,15 +72,33 @@ object HttpClientHolder {
             .cookieJar(persistentJar)
             .followRedirects(false)
             .followSslRedirects(false)
-            .addNetworkInterceptor(logging)
+            .addNetworkInterceptor(cleanLogging)
             .build()
 
         Log.d(TAG, "Initialised. Stored JSESSIONID: ${persistentJar.getSessionId()}")
     }
 
-    fun clearSession() = persistentJar.clear()
+    fun clearSession() {
+        persistentJar.clear()
+        lastActivityMs = 0L
+    }
+
     fun hasSession(): Boolean = persistentJar.getSessionId() != null
     fun getSessionId(): String? = persistentJar.getSessionId()
+
+    /** Call after every successful API response to keep the TTL window fresh. */
+    fun markActivity() {
+        lastActivityMs = System.currentTimeMillis()
+    }
+
+    /**
+     * Returns true if a JSESSIONID exists AND was active within the last 9 minutes.
+     * Skips a network round-trip when the session is almost certainly still alive.
+     */
+    fun isSessionLikelyAlive(): Boolean {
+        if (getSessionId() == null) return false
+        return (System.currentTimeMillis() - lastActivityMs) < SESSION_TTL_MS
+    }
 }
 
 // ── Persistent cookie jar ─────────────────────────────────────────────────────
@@ -57,7 +109,7 @@ class PersistentCookieJar(context: Context) : CookieJar {
     private val store = mutableMapOf<String, MutableMap<String, Cookie>>()
 
     init {
-        val savedId = prefs.getString("jsessionid_value", null)
+        val savedId     = prefs.getString("jsessionid_value", null)
         val savedDomain = prefs.getString("jsessionid_domain", null)
         if (savedId != null && savedDomain != null) {
             val cookie = Cookie.Builder()
@@ -72,7 +124,7 @@ class PersistentCookieJar(context: Context) : CookieJar {
     }
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        val host = url.host
+        val host    = url.host
         val hostMap = store.getOrPut(host) { mutableMapOf() }
         for (cookie in cookies) {
             hostMap[cookie.name] = cookie
@@ -104,7 +156,7 @@ class AttendanceApiService {
 
     companion object {
         private const val BASE_URL = "https://erp.mit.asia"
-        private const val TAG = "AttendanceAPI"
+        private const val TAG      = "AttendanceAPI"
     }
 
     private val client get() = HttpClientHolder.client
@@ -116,7 +168,11 @@ class AttendanceApiService {
         return withContext(Dispatchers.IO) {
             try {
                 doLogin(email, password)
-                verifyLoginWithRetry(semId)
+                when (checkSession(semId)) {
+                    SessionState.Alive   -> LoginResult.Success
+                    SessionState.Dead    -> LoginResult.InvalidCredentials
+                    SessionState.Offline -> LoginResult.ServerDown
+                }
             } catch (e: SocketTimeoutException) {
                 Log.e(TAG, "Timeout during login", e)
                 LoginResult.ServerDown
@@ -151,7 +207,7 @@ class AttendanceApiService {
         ).execute()
 
         val loginCode = loginResp.code
-        val location = loginResp.header("Location") ?: ""
+        val location  = loginResp.header("Location") ?: ""
         loginResp.close()
         Log.d(TAG, "POST j_spring_security_check → $loginCode  Location: $location")
 
@@ -172,154 +228,216 @@ class AttendanceApiService {
         Log.d(TAG, "doLogin complete. JSESSIONID: ${HttpClientHolder.getSessionId()}")
     }
 
-    /**
-     * FIX: was using Thread.sleep (blocks IO thread) — replaced with coroutine delay.
-     * Must be called from a suspend context.
-     */
-    private suspend fun verifyLoginWithRetry(semId: Int): LoginResult {
-        repeat(2) { attempt ->
-            try {
-                Log.d(TAG, "Verify attempt ${attempt + 1}")
-                if (isSessionValid(semId)) {
-                    Log.d(TAG, "Login verified")
-                    return LoginResult.Success
-                }
-                if (attempt == 1) return LoginResult.InvalidCredentials
-                delay(1500)                          // ← was Thread.sleep(1500)
-            } catch (e: SocketTimeoutException) {
-                Log.e(TAG, "Timeout on verify attempt ${attempt + 1}", e)
-                if (attempt == 1) return LoginResult.ServerDown
-                delay(1500)
-            } catch (e: IOException) {
-                Log.e(TAG, "IO error on verify attempt ${attempt + 1}", e)
-                if (attempt == 1) return LoginResult.ServerDown
-                delay(1500)
-            }
-        }
-        return LoginResult.InvalidCredentials
-    }
-
     // ── Session check ─────────────────────────────────────────────────────────
 
     /**
-     * FIX: empty array `[]` is treated as an invalid/expired session (per spec:
-     * a valid session always returns real subject data; empty means auth failed).
+     * Hits the subjects endpoint and maps the outcome to a [SessionState]:
+     *
+     *   non-empty JSON array  → Alive   (session valid)
+     *   empty [] / HTML       → Dead    (session gone, re-login needed)
+     *   code 521 / timeout    → Offline (server down, do not re-login)
+     *
+     * Blocking — must always be called from Dispatchers.IO.
      */
-    fun isSessionValid(semId: Int): Boolean {
+    private fun checkSession(semId: Int): SessionState {
         return try {
             val resp = client.newCall(subjectRequest(semId)).execute()
             val code = resp.code
             val body = resp.body?.string() ?: ""
             resp.close()
-            Log.d(TAG, "isSessionValid → code=$code  body=${body.take(150)}")
-            isValidJsonResponse(code, body)
+            Log.d(TAG, "checkSession → code=$code  body=${body.take(120)}")
+
+            when {
+                isServerDown(code)    -> SessionState.Offline
+                isValidJsonBody(body) -> {
+                    HttpClientHolder.markActivity()
+                    SessionState.Alive
+                }
+                else -> SessionState.Dead
+            }
+        } catch (e: SocketTimeoutException) {
+            Log.w(TAG, "checkSession: timeout — server likely down")
+            SessionState.Offline
+        } catch (e: IOException) {
+            Log.w(TAG, "checkSession: IO error — server likely down")
+            SessionState.Offline
         } catch (e: Exception) {
-            Log.e(TAG, "isSessionValid exception", e)
-            false
+            Log.e(TAG, "checkSession: unexpected error", e)
+            SessionState.Dead
         }
+    }
+
+    // ── Session gate (single re-auth point) ───────────────────────────────────
+
+    /**
+     * Every fetch call passes through here before touching the network.
+     *
+     * Flow:
+     *   1. forceCheck=false AND session within TTL → skip network check (fast path)
+     *   2. Hit endpoint to confirm state
+     *      • Alive   → proceed
+     *      • Offline → return failure, do NOT attempt login
+     *      • Dead    → doLogin once, recheck, then proceed or fail
+     *
+     * forceCheck=true is used when a fetch returns [] despite a TTL-trusted session,
+     * to distinguish "dead session returning []" from "genuinely no records".
+     */
+    private suspend fun ensureValidSession(
+        email: String,
+        password: String,
+        semId: Int,
+        forceCheck: Boolean = false
+    ): SessionState {
+        // Fast path — skip network check if session was recently active
+        if (!forceCheck && HttpClientHolder.isSessionLikelyAlive()) {
+            Log.d(TAG, "ensureValidSession: within TTL, reusing session")
+            return SessionState.Alive
+        }
+
+        Log.d(TAG, "ensureValidSession: checking session (forceCheck=$forceCheck)...")
+        val state = checkSession(semId)
+
+        if (state == SessionState.Dead) {
+            Log.w(TAG, "ensureValidSession: session dead — re-logging in")
+            return try {
+                doLogin(email, password)
+                checkSession(semId)  // recheck after login
+            } catch (e: Exception) {
+                Log.e(TAG, "ensureValidSession: re-login threw exception", e)
+                SessionState.Dead
+            }
+        }
+
+        return state
     }
 
     // ── Data fetching ─────────────────────────────────────────────────────────
 
-    suspend fun fetchSubjects(semId: Int, email: String, password: String): Result<List<SubjectApiResponse>> {
-        return withContext(Dispatchers.IO) {
-            fetchWithAutoReauth(email, password) {
-                val resp = client.newCall(subjectRequest(semId)).execute()
-                val body = resp.body?.string() ?: ""
-                val code = resp.code
-                resp.close()
-                Pair(code, body)
-            }.mapCatching { body ->
-                if (body.isBlank()) emptyList()
-                else {
-                    Log.d(TAG, "Subjects JSON (first 300): ${body.take(300)}")
-                    gson.fromJson(body, object : TypeToken<List<SubjectApiResponse>>() {}.type)
-                }
+    suspend fun fetchSubjects(
+        semId: Int,
+        email: String,
+        password: String
+    ): Result<List<SubjectApiResponse>> = withContext(Dispatchers.IO) {
+        try {
+            // Ensure session is valid before fetching
+            when (ensureValidSession(email, password, semId)) {
+                SessionState.Offline -> return@withContext Result.failure(Exception("Server is offline. Please try again later."))
+                SessionState.Dead    -> return@withContext Result.failure(Exception("Re-login failed. Check credentials."))
+                SessionState.Alive   -> Unit
             }
+
+            val resp = client.newCall(subjectRequest(semId)).execute()
+            val code = resp.code
+            val body = resp.body?.string() ?: ""
+            resp.close()
+
+            if (isServerDown(code)) {
+                return@withContext Result.failure(Exception("Server is offline. Please try again later."))
+            }
+
+            // [] received — could be dead session that slipped through TTL, force recheck
+            if (body.trim() == "[]" || !isValidJsonBody(body)) {
+                Log.w(TAG, "fetchSubjects: empty/invalid body — forcing session recheck")
+                when (ensureValidSession(email, password, semId, forceCheck = true)) {
+                    SessionState.Offline -> return@withContext Result.failure(Exception("Server is offline. Please try again later."))
+                    SessionState.Dead    -> return@withContext Result.failure(Exception("Re-login failed. Check credentials."))
+                    SessionState.Alive   -> Unit
+                }
+                // Retry fetch once after forced recheck
+                val resp2 = client.newCall(subjectRequest(semId)).execute()
+                val body2 = resp2.body?.string() ?: ""
+                resp2.close()
+                HttpClientHolder.markActivity()
+                return@withContext Result.success(
+                    if (isValidJsonBody(body2))
+                        gson.fromJson(body2, object : TypeToken<List<SubjectApiResponse>>() {}.type)
+                    else
+                        emptyList() // genuinely empty after verified session
+                )
+            }
+
+            HttpClientHolder.markActivity()
+            Log.d(TAG, "Subjects JSON (first 300): ${body.take(300)}")
+            Result.success(gson.fromJson(body, object : TypeToken<List<SubjectApiResponse>>() {}.type))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchSubjects error", e)
+            Result.failure(e)
         }
     }
 
     suspend fun fetchAttendanceDetail(
         subjectId: String,
+        semId: Int,
         email: String,
         password: String
-    ): Result<List<AttendanceApiRecord>> {
-        return withContext(Dispatchers.IO) {
-            fetchWithAutoReauth(email, password) {
-                val resp = client.newCall(attendanceRequest(subjectId)).execute()
-                val body = resp.body?.string() ?: ""
-                val code = resp.code
-                resp.close()
-                Pair(code, body)
-            }.mapCatching { body ->
-                if (body.isBlank()) emptyList()
-                else gson.fromJson(body, object : TypeToken<List<AttendanceApiRecord>>() {}.type)
+    ): Result<List<AttendanceApiRecord>> = withContext(Dispatchers.IO) {
+        try {
+            // Ensure session is valid before fetching
+            when (ensureValidSession(email, password, semId)) {
+                SessionState.Offline -> return@withContext Result.failure(Exception("Server is offline. Please try again later."))
+                SessionState.Dead    -> return@withContext Result.failure(Exception("Re-login failed. Check credentials."))
+                SessionState.Alive   -> Unit
             }
-        }
-    }
 
-    /**
-     * FIX: removed double re-auth risk. fetchWithAutoReauth is the single point
-     * of re-authentication. Callers no longer call isSessionValid + reAuthenticate
-     * before calling fetch* — that is handled here exclusively.
-     *
-     * The old code in AttendanceRepository.syncAttendanceDetail called
-     * isSessionValid → reAuthenticate and THEN fetchAttendanceDetail which
-     * called fetchWithAutoReauth → doLogin again. Now the repository simply
-     * calls fetch* directly and lets this function manage session recovery.
-     */
-    private fun fetchWithAutoReauth(
-        email: String,
-        password: String,
-        block: () -> Pair<Int, String>
-    ): Result<String> {
-        return try {
-            val (code, body) = block()
-            if (!isValidJsonResponse(code, body)) {
-                Log.w(TAG, "Session expired (code=$code) — re-authenticating once")
-                doLogin(email, password)
-                val (code2, body2) = block()
-                if (!isValidJsonResponse(code2, body2)) {
-                    Log.e(TAG, "Re-auth failed — still not getting valid response (code=$code2)")
-                    Result.failure(Exception("Session expired and re-auth failed"))
-                } else {
-                    Result.success(body2)
+            val resp = client.newCall(attendanceRequest(subjectId)).execute()
+            val code = resp.code
+            val body = resp.body?.string() ?: ""
+            resp.close()
+
+            if (isServerDown(code)) {
+                return@withContext Result.failure(Exception("Server is offline. Please try again later."))
+            }
+
+            // [] received — could be dead session that slipped through TTL, force recheck
+            // After recheck: if still [] then subject genuinely has no records yet
+            if (body.trim() == "[]" || !isValidJsonBody(body)) {
+                Log.w(TAG, "fetchAttendanceDetail: empty/invalid body — forcing session recheck")
+                when (ensureValidSession(email, password, semId, forceCheck = true)) {
+                    SessionState.Offline -> return@withContext Result.failure(Exception("Server is offline. Please try again later."))
+                    SessionState.Dead    -> return@withContext Result.failure(Exception("Re-login failed. Check credentials."))
+                    SessionState.Alive   -> Unit
                 }
-            } else {
-                Result.success(body)
+                // Retry fetch once after forced recheck
+                val resp2 = client.newCall(attendanceRequest(subjectId)).execute()
+                val body2 = resp2.body?.string() ?: ""
+                resp2.close()
+                HttpClientHolder.markActivity()
+                return@withContext Result.success(
+                    if (isValidJsonBody(body2))
+                        gson.fromJson(body2, object : TypeToken<List<AttendanceApiRecord>>() {}.type)
+                    else
+                        emptyList() // genuinely empty after verified session
+                )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchWithAutoReauth error", e)
-            Result.failure(e)
-        }
-    }
 
-    suspend fun reAuthenticate(email: String, password: String): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                doLogin(email, password)
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "reAuthenticate failed", e)
-                false
-            }
+            HttpClientHolder.markActivity()
+            Result.success(gson.fromJson(body, object : TypeToken<List<AttendanceApiRecord>>() {}.type))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchAttendanceDetail error", e)
+            Result.failure(e)
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * FIX: `[]` and `"null"` are now treated as invalid (session error / no access),
-     * consistent with the spec that a valid authenticated response always contains data.
-     * Blank body, HTML redirect page, 3xx/401/403 all remain invalid.
+     * 521 = Cloudflare "Web Server Is Down" — origin server unreachable.
+     * Timeouts are handled separately in checkSession via exception catch.
      */
-    private fun isValidJsonResponse(code: Int, body: String): Boolean {
-        if (code in 300..399) return false
-        if (code == 401 || code == 403) return false
+    private fun isServerDown(code: Int): Boolean = code == 521
+
+    /**
+     * A valid session response is a non-empty JSON array.
+     *   []   → session invalid / no data  → Dead
+     *   HTML → login redirect page        → Dead
+     */
+    private fun isValidJsonBody(body: String): Boolean {
         val trimmed = body.trim()
-        //if (trimmed.isBlank()) return false
-        //if (trimmed.contains("<html", ignoreCase = true)) return false
-        //if (trimmed == "[]" || trimmed == "null") return false   // empty array = session/access error
+        if (trimmed.isBlank()) return false
+        if (trimmed.contains("<html", ignoreCase = true)) return false
+        if (trimmed == "[]" || trimmed == "null") return false
         return trimmed.startsWith("[")
     }
 
@@ -340,4 +458,5 @@ class AttendanceApiService {
             .header("Referer", "$BASE_URL/studentCourseFileNew.htm?shwA=%2700A%27")
             .header("User-Agent", "Mozilla/5.0")
             .get().build()
+
 }

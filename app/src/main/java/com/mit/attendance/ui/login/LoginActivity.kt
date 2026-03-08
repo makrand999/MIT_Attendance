@@ -12,11 +12,10 @@ import com.mit.attendance.R
 import com.mit.attendance.data.AttendanceRepository
 import com.mit.attendance.databinding.ActivityLoginBinding
 import com.mit.attendance.model.LoginResult
-import com.mit.attendance.model.SingleLiveEvent
 import com.mit.attendance.service.AttendanceSyncWorker
 import com.mit.attendance.ui.subjects.SubjectsActivity
 import kotlinx.coroutines.launch
-import androidx.appcompat.app.AppCompatDelegate
+
 // ── Splash Activity ───────────────────────────────────────────────────────────
 
 class SplashActivity : AppCompatActivity() {
@@ -116,7 +115,7 @@ class LoginActivity : AppCompatActivity() {
                     binding.tvStatus.visibility = View.GONE
                 }
                 is LoginUiState.Success -> {
-                    AttendanceSyncWorker.createNotificationChannel(applicationContext)
+                    AttendanceSyncWorker.createNotificationChannels(applicationContext)
                     AttendanceSyncWorker.schedule(applicationContext)
                     AttendanceSyncWorker.runNow(applicationContext)
                     startActivity(Intent(this, SubjectsActivity::class.java))

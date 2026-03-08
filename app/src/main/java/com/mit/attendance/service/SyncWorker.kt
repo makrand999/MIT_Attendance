@@ -26,6 +26,8 @@ class AttendanceSyncWorker(
         const val WORK_NAME_IMMEDIATE = "attendance_sync_immediate"
         const val CHANNEL_ID          = "attendance_updates"
         const val CHANNEL_NAME        = "Attendance Updates"
+        const val UPDATE_CHANNEL_ID   = "app_updates"
+        const val UPDATE_CHANNEL_NAME = "App Updates"
         private const val TAG         = "SyncWorker"
 
         /** One-shot sync — call after login and on cold app open. */
@@ -59,12 +61,18 @@ class AttendanceSyncWorker(
             Log.d(TAG, "Periodic sync cancelled")
         }
 
-        fun createNotificationChannel(context: Context) {
-            val channel = NotificationChannel(
+        fun createNotificationChannels(context: Context) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            val attendanceChannel = NotificationChannel(
                 CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT
             ).apply { description = "Notifies when new attendance entries are recorded" }
-            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(attendanceChannel)
+
+            val updateChannel = NotificationChannel(
+                UPDATE_CHANNEL_ID, UPDATE_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH
+            ).apply { description = "Notifies when a new app update is available" }
+            notificationManager.createNotificationChannel(updateChannel)
         }
 
         private fun networkConstraints() =

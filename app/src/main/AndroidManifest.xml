@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".MITAttendanceApp"
@@ -38,6 +39,22 @@
         <activity
             android:name=".ui.detail.AttendanceDetailActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".ui.practical.PracticalActivity"
+            android:label="Practicals"
+            android:parentActivityName=".ui.subjects.SubjectsActivity" />
+
+        <activity
+            android:name=".ui.practical.PracticalListActivity"
+            android:label="Practicals"
+            android:parentActivityName=".ui.practical.PracticalActivity" />
+
+        <activity
+            android:name=".ui.practical.SubmitPracticalActivity"
+            android:label="Submit Practical"
+            android:parentActivityName=".ui.practical.PracticalListActivity"
+            android:windowSoftInputMode="adjustResize" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

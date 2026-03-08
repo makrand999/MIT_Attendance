@@ -11,7 +11,7 @@ class MITAttendanceApp : Application(), Configuration.Provider {
         super.onCreate()
         // Must be first — everything else depends on the singleton OkHttpClient
         HttpClientHolder.init(this)
-        AttendanceSyncWorker.createNotificationChannel(this)
+        AttendanceSyncWorker.createNotificationChannels(this)
     }
 
     override val workManagerConfiguration: Configuration

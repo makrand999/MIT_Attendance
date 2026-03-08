@@ -1,24 +1,21 @@
 package com.mit.attendance.data
 
-import android.content.Context
 import android.util.Log
 import com.mit.attendance.data.api.AttendanceApiService
 import com.mit.attendance.data.api.HttpClientHolder
-import com.mit.attendance.data.db.AttendanceDatabase
+import com.mit.attendance.data.db.AppDatabase
 import com.mit.attendance.data.prefs.UserPreferences
 import com.mit.attendance.model.*
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-class AttendanceRepository(context: Context) {
+class AttendanceRepository(context: android.content.Context) {
 
     private val TAG = "AttendanceRepo"
 
     val api = AttendanceApiService()
-    private val db = AttendanceDatabase.getInstance(context)
+    private val db = AppDatabase.getDatabase(context)
     val prefs = UserPreferences(context)
 
     private val subjectDao = db.subjectDao()
@@ -29,14 +26,13 @@ class AttendanceRepository(context: Context) {
     fun getSubjectsFlow(): Flow<List<SubjectUiModel>> =
         subjectDao.getAllSubjectsWithNewCounts().map { rows ->
             rows.map { (entity, newCount, actualPresent, actualAbsent, actualTotal) ->
-                // Use actual DB counts if available, fall back to server counts
-                val present = if (actualTotal > 0) actualPresent else entity.totalPresent
-                val absent  = if (actualTotal > 0) actualAbsent  else entity.totalAbsent
-                val total   = if (actualTotal > 0) actualTotal   else entity.totalLecture
+                val present = if (actualTotal > 0L) actualPresent.toInt() else entity.totalPresent
+                val absent  = if (actualTotal > 0L) actualAbsent.toInt()  else entity.totalAbsent
+                val total   = if (actualTotal > 0L) actualTotal.toInt()   else entity.totalLecture
                 val pct     = if (total > 0) (present * 100f / total) else entity.percentage
 
                 SubjectUiModel(
-                    id             = entity.subjectId,
+                    id             = entity.subjectName,
                     name           = entity.subjectName,
                     present        = present,
                     absent         = absent,
@@ -47,37 +43,51 @@ class AttendanceRepository(context: Context) {
             }
         }
 
-    private suspend fun syncSubjects(semId: Int, email: String, password: String) {
+    private suspend fun syncSubjects(semId: Int, email: String, password: String) = withContext(Dispatchers.IO) {
         val result = api.fetchSubjects(semId, email, password)
         if (result.isFailure) {
             Log.w(TAG, "syncSubjects failed: ${result.exceptionOrNull()?.message}")
-            return
+            return@withContext
         }
-        val entities = result.getOrThrow().mapNotNull { s ->
+        
+        val apiResponse = result.getOrThrow()
+        
+        // 1. Map to entities with aggressive cleaning
+        val entities = apiResponse.mapNotNull { s ->
             val id = s.encoSubjectwiseStudentId ?: return@mapNotNull null
+            // Standardize whitespace: trim and replace multiple spaces with one
+            val name = s.subject?.trim()?.replace(Regex("\\s+"), " ") ?: "Unknown"
             val present = s.presentCount ?: 0
             val absent = s.absentCount ?: 0
             val total = s.totalLecture ?: (present + absent)
             val pct = s.percentage ?: if (total > 0) (present * 100f / total) else 0f
+            
             SubjectEntity(
+                subjectName = name,
                 subjectId = id,
-                subjectName = s.subject ?: "Unknown",
                 totalPresent = present,
                 totalAbsent = absent,
                 totalLecture = total,
                 percentage = pct
             )
         }
+        
         if (entities.isNotEmpty()) {
+            // 2. Purge subjects that no longer exist on the server (handles renames/removals)
+            val serverNames = entities.map { it.subjectName }
+            subjectDao.deleteNotIn(serverNames)
+            attendanceDao.purgeOrphanedRecords()
+
+            // 3. Upsert the fresh list
             subjectDao.upsertSubjects(entities)
-            Log.d(TAG, "Upserted ${entities.size} subjects")
+            Log.d(TAG, "Synced ${entities.size} subjects (purged old ones)")
         }
     }
 
     // ── Attendance detail ─────────────────────────────────────────────────────
 
-    fun getAttendanceFlow(subjectId: String): Flow<List<AttendanceUiModel>> =
-        attendanceDao.getAttendanceForSubject(subjectId).map { entities ->
+    fun getAttendanceFlow(subjectName: String): Flow<List<AttendanceUiModel>> =
+        attendanceDao.getAttendanceForSubject(subjectName).map { entities ->
             entities.map { e ->
                 AttendanceUiModel(
                     date = e.date,
@@ -89,36 +99,35 @@ class AttendanceRepository(context: Context) {
             }
         }
 
-    /**
-     * FIX: removed the pre-flight isSessionValid + reAuthenticate block.
-     * fetchAttendanceDetail → fetchWithAutoReauth handles session recovery
-     * internally and is the single source of truth. Having two re-auth paths
-     * created a race condition where back-to-back logins could clobber each other.
-     */
-    suspend fun syncAttendanceDetail(subjectId: String): SyncResult {
+    suspend fun syncAttendanceDetail(subjectName: String): SyncResult = withContext(Dispatchers.IO) {
         val creds = prefs.getCredentialsSnapshot()
         val email = creds.email
         val password = creds.password
+        val semId    = creds.semId
+        if (email.isEmpty()) return@withContext SyncResult.SessionError
 
-        if (email.isEmpty()) return SyncResult.SessionError
-
-        // FIX: guard against blank subjectId — would silently query with "" and return nothing
-        if (subjectId.isBlank()) {
-            Log.e(TAG, "syncAttendanceDetail called with blank subjectId")
-            return SyncResult.SessionError
+        val subject = subjectDao.getSubjectByName(subjectName)
+        if (subject == null) {
+            Log.e(TAG, "Subject not found in DB: $subjectName")
+            return@withContext SyncResult.SessionError
         }
+        val subjectId = subject.subjectId
 
-        val result = api.fetchAttendanceDetail(subjectId, email, password)
+        val result = api.fetchAttendanceDetail(subjectId, semId, email, password)
         if (result.isFailure) {
-            Log.e(TAG, "fetchAttendanceDetail failed: ${result.exceptionOrNull()?.message}")
-            return SyncResult.NetworkError
+            val msg = result.exceptionOrNull()?.message ?: ""
+            Log.e(TAG, "fetchAttendanceDetail failed for $subjectName: $msg")
+            return@withContext if (msg.contains("offline", ignoreCase = true))
+                SyncResult.ServerOffline
+            else
+                SyncResult.NetworkError
         }
 
         val apiRecords = result.getOrThrow()
-        if (apiRecords.isEmpty()) return SyncResult.NoChange
+        if (apiRecords.isEmpty()) return@withContext SyncResult.NoChange
 
-        val existingKeys = attendanceDao.getAttendanceForSubjectList(subjectId)
-            .mapTo(HashSet()) { Triple(it.subjectId, it.date, it.startTime) }
+        val existingKeys = attendanceDao.getAttendanceForSubjectList(subjectName)
+            .mapTo(HashSet()) { Triple(it.subjectName, it.date, it.startTime) }
 
         val incoming = apiRecords.mapNotNull { r ->
             val date = r.Date ?: return@mapNotNull null
@@ -129,37 +138,38 @@ class AttendanceRepository(context: Context) {
                 else -> "A"
             }
             AttendanceEntity(
-                subjectId = subjectId,
+                subjectName = subjectName,
                 date = date,
                 status = status,
                 startTime = stime,
                 endTime = etime,
-                isNew = Triple(subjectId, date, stime) !in existingKeys
+                isNew = Triple(subjectName, date, stime) !in existingKeys
             )
         }
 
         val insertedRows = attendanceDao.insertIfNotExists(incoming)
         val newCount = insertedRows.count { it != -1L }
-        Log.d(TAG, "syncAttendanceDetail $subjectId: ${incoming.size} incoming, $newCount new")
-
-        return if (newCount > 0) SyncResult.Success(newCount) else SyncResult.NoChange
+        return@withContext if (newCount > 0) SyncResult.Success(newCount) else SyncResult.NoChange
     }
 
-    suspend fun markAttendanceAsSeen(subjectId: String) {
-        attendanceDao.markAllAsSeen(subjectId)
+    suspend fun markAttendanceAsSeen(subjectName: String) = withContext(Dispatchers.IO) {
+        attendanceDao.markAllAsSeen(subjectName, System.currentTimeMillis())
     }
 
     // ── Login / logout ────────────────────────────────────────────────────────
 
-    suspend fun login(email: String, password: String, semId: Int): LoginResult {
+    suspend fun login(email: String, password: String, semId: Int): LoginResult = withContext(Dispatchers.IO) {
+        // Emergency cleanup on login to prevent cross-account/cross-sem ghosting
+        db.clearAllTables()
+        
         val result = api.login(email, password, semId)
         if (result is LoginResult.Success) {
             prefs.saveCredentials(email, password, semId)
         }
-        return result
+        return@withContext result
     }
 
-    suspend fun logout() {
+    suspend fun logout() = withContext(Dispatchers.IO) {
         prefs.clearAll()
         subjectDao.deleteAll()
         HttpClientHolder.clearSession()
@@ -167,41 +177,59 @@ class AttendanceRepository(context: Context) {
 
     // ── Sync ──────────────────────────────────────────────────────────────────
 
-    suspend fun initialSync(): Int {
+    suspend fun initialSync(): Int = withContext(Dispatchers.IO) {
         val creds = prefs.getCredentialsSnapshot()
-        val email = creds.email
-        val password = creds.password
-        val semId = creds.semId
-        if (email.isEmpty()) return 0
+        if (creds.email.isEmpty()) return@withContext 0
 
-        syncSubjects(semId, email, password)
+        // Auto-fix duplicates before normal sync
+        autoFixDuplicates()
 
+        syncSubjects(creds.semId, creds.email, creds.password)
         val subjects = subjectDao.getAllSubjectsList()
-        Log.d(TAG, "initialSync: pre-caching attendance for ${subjects.size} subjects")
-
         val results = coroutineScope {
             subjects.map { subject ->
-                async { syncAttendanceDetail(subject.subjectId) }
+                async { syncAttendanceDetail(subject.subjectName) }
             }.awaitAll()
         }
-
-        return results.sumOf { if (it is SyncResult.Success) it.newCount else 0 }
+        return@withContext results.sumOf { if (it is SyncResult.Success) it.newCount else 0 }
     }
 
-    suspend fun backgroundSync(): Int {
+    suspend fun backgroundSync(): Int = withContext(Dispatchers.IO) {
         val creds = prefs.getCredentialsSnapshot()
-        val email = creds.email
-        val password = creds.password
-        val semId = creds.semId
-        if (email.isEmpty()) return 0
+        if (creds.email.isEmpty()) return@withContext 0
 
-        syncSubjects(semId, email, password)
+        // Auto-fix duplicates before normal sync
+        autoFixDuplicates()
 
+        syncSubjects(creds.semId, creds.email, creds.password)
         var totalNew = 0
         for (subject in subjectDao.getAllSubjectsList()) {
-            val r = syncAttendanceDetail(subject.subjectId)
+            val r = syncAttendanceDetail(subject.subjectName)
             if (r is SyncResult.Success) totalNew += r.newCount
         }
-        return totalNew
+        return@withContext totalNew
+    }
+
+    suspend fun autoFixDuplicates() = withContext(Dispatchers.IO) {
+        val subjects = subjectDao.getAllSubjectsList()
+        if (subjects.isEmpty()) return@withContext
+        val uniqueNames = subjects.map { it.subjectName.trim().lowercase() }.toSet()
+        if (subjects.size > uniqueNames.size) {
+            Log.w(TAG, "Emergency Duplicate Cleanup triggered")
+            performCleanSync()
+        }
+    }
+
+    suspend fun performCleanSync() = withContext(Dispatchers.IO) {
+        val creds = prefs.getCredentialsSnapshot()
+        if (creds.email.isEmpty()) return@withContext
+        db.clearAllTables()
+        login(creds.email, creds.password, creds.semId)
+        syncSubjects(creds.semId, creds.email, creds.password)
+        val subjects = subjectDao.getAllSubjectsList()
+        for (subject in subjects) {
+            syncAttendanceDetail(subject.subjectName)
+            markAttendanceAsSeen(subject.subjectName)
+        }
     }
 }

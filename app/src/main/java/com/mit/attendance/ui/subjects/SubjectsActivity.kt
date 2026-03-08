@@ -1,5 +1,8 @@
 package com.mit.attendance.ui.subjects
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -15,6 +18,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
 import com.mit.attendance.R
 import com.mit.attendance.data.AttendanceRepository
+import com.mit.attendance.data.api.UpdateChecker
 import com.mit.attendance.databinding.ActivitySubjectsBinding
 import com.mit.attendance.databinding.ItemSubjectBinding
 import com.mit.attendance.model.SingleLiveEvent
@@ -22,6 +26,7 @@ import com.mit.attendance.model.SubjectUiModel
 import com.mit.attendance.service.AttendanceSyncWorker
 import com.mit.attendance.ui.detail.AttendanceDetailActivity
 import com.mit.attendance.ui.login.LoginActivity
+import com.mit.attendance.ui.practical.PracticalActivity
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -96,6 +101,11 @@ class SubjectsActivity : AppCompatActivity() {
         setupSwipeRefresh()
         observeData()
 
+        // Check for app updates
+        lifecycleScope.launch {
+            UpdateChecker.checkForUpdates(this@SubjectsActivity)
+        }
+
         // FIX: collect notification state ONCE in onCreate, not on every
         // onPrepareOptionsMenu call (which launched a new coroutine each time,
         // leaking collectors and causing menu title flicker).
@@ -122,6 +132,10 @@ class SubjectsActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_practical -> {
+                startActivity(Intent(this, PracticalActivity::class.java))
+                true
+            }
             R.id.action_notifications -> {
                 val newEnabled = !notificationsOn
                 viewModel.toggleNotifications(newEnabled)
@@ -132,6 +146,14 @@ class SubjectsActivity : AppCompatActivity() {
                     if (newEnabled) "Notifications enabled" else "Notifications disabled",
                     Snackbar.LENGTH_SHORT
                 ).show()
+                true
+            }
+            R.id.action_share -> {
+                val appUrl = "https://github.com/makrand999/MIT_Attendance/releases/latest"
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("App Link", appUrl)
+                clipboard.setPrimaryClip(clip)
+                Snackbar.make(binding.root, getString(R.string.msg_link_copied), Snackbar.LENGTH_SHORT).show()
                 true
             }
             R.id.action_update -> {

@@ -51,6 +51,7 @@ class DetailViewModel(
                     is SyncResult.NoChange     -> "✓ Already up to date"
                     is SyncResult.NetworkError -> "⚠️ Network error — showing cached data"
                     is SyncResult.SessionError -> "⚠️ Session expired — please log in again"
+                    is SyncResult.ServerOffline -> "🔴 Server is offline (521) — showing cached data"
                 })
             } catch (e: Exception) {
                 _syncMessage.call("⚠️ Unexpected error: ${e.message}")

@@ -2,13 +2,33 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
 
     <style name="Theme.MITAttendance" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Main colors -->
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/accent</item>
+
+        <!-- Background and Surface -->
         <item name="android:colorBackground">@color/background</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+
+        <!-- Text Colors -->
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+
+        <!-- Status and Nav Bars -->
         <item name="android:statusBarColor">@color/primary_dark</item>
         <item name="android:navigationBarColor">@color/primary_dark</item>
-        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MaterialComponents.MaterialAlertDialog</item>
+
+        <!-- Toolbar / Popup -->
+        <item name="actionBarPopupTheme">@style/AppPopupTheme</item>
+
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Material3.MaterialAlertDialog</item>
+    </style>
+
+    <style name="AppPopupTheme" parent="ThemeOverlay.Material3">
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:colorBackground">?attr/colorSurface</item>
     </style>
 
     <style name="Theme.MITAttendance.Splash" parent="Theme.SplashScreen">
@@ -17,16 +37,9 @@
         <item name="postSplashScreenTheme">@style/Theme.MITAttendance</item>
     </style>
 
-    <style name="CardStyle" parent="Widget.MaterialComponents.CardView">
+    <style name="CardStyle" parent="Widget.Material3.CardView.Elevated">
         <item name="cardElevation">4dp</item>
         <item name="cardCornerRadius">12dp</item>
-        <item name="android:foreground">?attr/selectableItemBackground</item>
-    </style>
-
-    <style name="ToolbarStyle" parent="Widget.MaterialComponents.Toolbar.Primary">
-        <item name="android:background">@color/primary</item>
-        <item name="titleTextColor">@color/toolbar_text</item>
-        <item name="subtitleTextColor">@color/toolbar_text</item>
     </style>
 
     <style name="BadgeStyle">

@@ -15,17 +15,12 @@ class Converters {
 
 // ── JOIN result ───────────────────────────────────────────────────────────────
 
-/**
- * Returned by [SubjectDao.getAllSubjectsWithNewCounts].
- * Avoids calling countNewEntries() per-subject inside Flow.map{} which would
- * cause N cascading DB reads and repeated list emissions that look like duplicates.
- */
 data class SubjectWithNewCount(
     @Embedded val entity: SubjectEntity,
-    val newCount: Int,
-    val actualPresent: Int,
-    val actualAbsent: Int,
-    val actualTotal: Int
+    val newCount: Long,
+    val actualPresent: Long,
+    val actualAbsent: Long,
+    val actualTotal: Long
 )
 
 // ── Subject DAO ───────────────────────────────────────────────────────────────
@@ -33,10 +28,6 @@ data class SubjectWithNewCount(
 @Dao
 interface SubjectDao {
 
-    /**
-     * Single query joining subjects + unseen attendance count.
-     * Room fires ONE Flow emission per change instead of N per subject.
-     */
     @Query("""
     SELECT 
         s.*,
@@ -45,18 +36,27 @@ interface SubjectDao {
         COUNT(CASE WHEN a.status = 'A' THEN 1 END) AS actualAbsent,
         COUNT(a.date) AS actualTotal
     FROM subjects s
-    LEFT JOIN attendance_records a ON s.subjectId = a.subjectId
-    GROUP BY s.subjectId
+    LEFT JOIN attendance_records a ON s.subjectName = a.subjectName
+    GROUP BY s.subjectName
     ORDER BY s.subjectName
 """)
     fun getAllSubjectsWithNewCounts(): Flow<List<SubjectWithNewCount>>
 
     @Query("SELECT * FROM subjects ORDER BY subjectName")
     suspend fun getAllSubjectsList(): List<SubjectEntity>
+    
+    @Query("SELECT * FROM subjects WHERE subjectName = :name LIMIT 1")
+    suspend fun getSubjectByName(name: String): SubjectEntity?
 
-    /** REPLACE handles both insert (new row) and update (existing row) atomically. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSubjects(subjects: List<SubjectEntity>)
+
+    /**
+     * Deletes subjects that are not in the provided list of names.
+     * This "purges" old subjects that the server no longer reports.
+     */
+    @Query("DELETE FROM subjects WHERE subjectName NOT IN (:names)")
+    suspend fun deleteNotIn(names: List<String>)
 
     @Query("DELETE FROM subjects")
     suspend fun deleteAll()
@@ -69,40 +69,39 @@ interface AttendanceDao {
 
     @Query("""
         SELECT * FROM attendance_records
-        WHERE subjectId = :subjectId
+        WHERE subjectName = :subjectName
         ORDER BY date DESC, startTime DESC
     """)
-    fun getAttendanceForSubject(subjectId: String): Flow<List<AttendanceEntity>>
+    fun getAttendanceForSubject(subjectName: String): Flow<List<AttendanceEntity>>
 
     @Query("""
         SELECT * FROM attendance_records
-        WHERE subjectId = :subjectId
+        WHERE subjectName = :subjectName
         ORDER BY date DESC, startTime DESC
     """)
-    suspend fun getAttendanceForSubjectList(subjectId: String): List<AttendanceEntity>
+    suspend fun getAttendanceForSubjectList(subjectName: String): List<AttendanceEntity>
 
-    /**
-     * Only inserts rows whose composite primary key (subjectId, date, startTime)
-     * does not already exist. Returns -1L for skipped rows.
-     */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIfNotExists(records: List<AttendanceEntity>): List<Long>
 
     @Query("""
         UPDATE attendance_records
         SET isNew = 0, seenAt = :time
-        WHERE subjectId = :subjectId AND isNew = 1
+        WHERE subjectName = :subjectName AND isNew = 1
     """)
-    suspend fun markAllAsSeen(subjectId: String, time: Long = System.currentTimeMillis())
+    suspend fun markAllAsSeen(subjectName: String, time: Long)
 
-    @Query("SELECT COUNT(*) FROM attendance_records WHERE subjectId = :subjectId AND isNew = 1")
-    suspend fun countNewEntries(subjectId: String): Int
+    /**
+     * When a subject is purged, its attendance records should be cleaned up.
+     */
+    @Query("DELETE FROM attendance_records WHERE subjectName NOT IN (SELECT subjectName FROM subjects)")
+    suspend fun purgeOrphanedRecords()
 
-    @Query("SELECT COUNT(*) FROM attendance_records WHERE isNew = 1")
-    suspend fun totalNewEntriesAllSubjects(): Int
+    @Query("DELETE FROM attendance_records WHERE subjectName = :subjectName")
+    suspend fun deleteForSubject(subjectName: String)
 
-    @Query("DELETE FROM attendance_records WHERE subjectId = :subjectId")
-    suspend fun deleteForSubject(subjectId: String)
+    @Query("DELETE FROM attendance_records")
+    suspend fun deleteAll()
 }
 
 // ── Database ──────────────────────────────────────────────────────────────────
@@ -113,21 +112,24 @@ interface AttendanceDao {
     exportSchema = false
 )
 @TypeConverters(Converters::class)
-abstract class AttendanceDatabase : RoomDatabase() {
-
+abstract class AppDatabase : RoomDatabase() {
     abstract fun subjectDao(): SubjectDao
     abstract fun attendanceDao(): AttendanceDao
 
     companion object {
-        @Volatile private var INSTANCE: AttendanceDatabase? = null
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
 
-        fun getInstance(context: Context): AttendanceDatabase =
-            INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
                     context.applicationContext,
-                    AttendanceDatabase::class.java,
-                    "attendance_db"
-                ).build().also { INSTANCE = it }
+                    AppDatabase::class.java,
+                    "mit_attendance_db"
+                ).build()
+                INSTANCE = instance
+                instance
             }
+        }
     }
 }

@@ -13,4 +13,6 @@
     <string name="menu_notifications">Notifications</string>
     <string name="menu_update">Check for Updates</string>
     <string name="menu_logout">Sign Out</string>
+    <string name="menu_share">Share App</string>
+    <string name="msg_link_copied">App link copied to clipboard</string>
 </resources>
