@@ -21,7 +21,7 @@ class PracticalListActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPracticalListBinding
     private val viewModel: PracticalViewModel by viewModels {
-        PracticalViewModelFactory(UserPreferences(applicationContext))
+        PracticalViewModelFactory(application, UserPreferences(applicationContext))
     }
     private lateinit var adapter: PracticalAdapter
     private var subjectId: Int = -1

@@ -1,5 +1,7 @@
 package com.mit.attendance.model
 
+import androidx.room.Entity
+import androidx.room.PrimaryKey
 import com.google.gson.annotations.SerializedName
 
 // ── Login ──────────────────────────────────────────────────────────────────
@@ -25,8 +27,9 @@ data class StudentSubjectsResponse(
     val subjects: List<PracticalSubject>
 )
 
+@Entity(tableName = "practical_subjects")
 data class PracticalSubject(
-    val id: Int,
+    @PrimaryKey val id: Int,
     val subjectname: String,
     val subjectcode: String,
     val practical: Boolean
@@ -39,8 +42,9 @@ data class PracticalsResponse(
     @SerializedName("not_submitted") val notSubmitted: List<Practical>
 )
 
+@Entity(tableName = "practicals")
 data class Practical(
-    val id: Int,
+    @PrimaryKey val id: Int,
     @SerializedName("practical_number") val practicalNumber: Int,
     @SerializedName("practical_aim") val practicalAim: String,
     @SerializedName("practical_description") val practicalDescription: String?,
@@ -49,7 +53,11 @@ data class Practical(
     val theory: String?,
     val conclusion: String?,
     val language: String?,
-    val code: String?
+    val code: String?,
+    
+    // Fields for local caching
+    var subjectId: Int = 0,
+    var isSubmitted: Boolean = false
 )
 
 // ── Submit payload ─────────────────────────────────────────────────────────

@@ -420,6 +420,48 @@ class AttendanceApiService {
         }
     }
 
+    suspend fun fetchStudentInfo(
+        email: String,
+        password: String,
+        semId: Int
+    ): Result<StudentInfoResponse> = withContext(Dispatchers.IO) {
+        try {
+            when (ensureValidSession(email, password, semId)) {
+                SessionState.Offline -> return@withContext Result.failure(Exception("Server offline"))
+                SessionState.Dead    -> return@withContext Result.failure(Exception("Session dead"))
+                SessionState.Alive   -> Unit
+            }
+
+            val resp = client.newCall(studentInfoRequest()).execute()
+            val body = resp.body?.string() ?: ""
+            resp.close()
+
+            Log.d(TAG, "STUDENT_INFO_RAW: $body")
+
+            if (body.contains("<html", ignoreCase = true)) {
+                return@withContext Result.failure(Exception("Invalid response"))
+            }
+
+            // ERP usually returns a list [ { "Gender": "..." } ]
+            val data = try {
+                if (body.trim().startsWith("[")) {
+                    val listType = object : TypeToken<List<StudentInfoResponse>>() {}.type
+                    val list: List<StudentInfoResponse> = gson.fromJson(body, listType)
+                    list.firstOrNull() ?: StudentInfoResponse(null)
+                } else {
+                    gson.fromJson(body, StudentInfoResponse::class.java)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse student info", e)
+                StudentInfoResponse(null)
+            }
+
+            Result.success(data)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
@@ -440,6 +482,16 @@ class AttendanceApiService {
         if (trimmed == "[]" || trimmed == "null") return false
         return trimmed.startsWith("[")
     }
+
+    private fun studentInfoRequest(): Request =
+        Request.Builder()
+            .url("$BASE_URL/stu_getStudentPersonalinfo.json")
+            .header("Accept", "application/json, text/javascript, */*; q=0.01")
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Referer", "$BASE_URL/stu_studentProfile.htm")
+            .header("User-Agent", "Mozilla/5.0")
+            .get()
+            .build()
 
     private fun subjectRequest(semId: Int): Request =
         Request.Builder()

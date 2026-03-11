@@ -1,24 +1,32 @@
 package com.mit.attendance.ui.practical
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.*
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.addTextChangedListener
 import com.mit.attendance.R
 import com.mit.attendance.data.prefs.UserPreferences
 
 class SubmitPracticalActivity : AppCompatActivity() {
 
     private val viewModel: PracticalViewModel by viewModels {
-        PracticalViewModelFactory(UserPreferences(this))
+        PracticalViewModelFactory(application, UserPreferences(this))
     }
 
     // Views
     private lateinit var tvAim:           TextView
     private lateinit var tvDesc:          TextView
-    private lateinit var tvDescLabel:     TextView
+    private lateinit var btnCopyAll:      Button
+    private lateinit var btnPasteTheory:  Button
+    private lateinit var btnPasteConclusion: Button
     private lateinit var etTheory:        EditText
     private lateinit var etConclusion:    EditText
     private lateinit var btnAiTheory:     Button
@@ -59,7 +67,9 @@ class SubmitPracticalActivity : AppCompatActivity() {
         // Bind views
         tvAim              = findViewById(R.id.tvAim)
         tvDesc             = findViewById(R.id.tvDesc)
-        tvDescLabel        = findViewById(R.id.tvDescLabel)
+        btnCopyAll         = findViewById(R.id.btnCopyAll)
+        btnPasteTheory     = findViewById(R.id.btnPasteTheory)
+        btnPasteConclusion = findViewById(R.id.btnPasteConclusion)
         etTheory           = findViewById(R.id.etTheory)
         etConclusion       = findViewById(R.id.etConclusion)
         btnAiTheory        = findViewById(R.id.btnAiTheory)
@@ -73,8 +83,7 @@ class SubmitPracticalActivity : AppCompatActivity() {
         // Populate
         tvAim.text = practicalAim
         if (practicalDesc.isBlank()) {
-            tvDescLabel.visibility = View.GONE
-            tvDesc.visibility      = View.GONE
+            tvDesc.visibility = View.GONE
         } else {
             tvDesc.text = practicalDesc
         }
@@ -83,6 +92,19 @@ class SubmitPracticalActivity : AppCompatActivity() {
         if (existingConclusion.isNotBlank()) etConclusion.setText(existingConclusion)
 
         btnSubmit.text = if (isSubmitted) "Update Practical" else "Submit Practical"
+
+        // ── Clipboard Buttons ─────────────────────────────────────────────
+        btnCopyAll.setOnClickListener {
+            val combinedText = if (practicalDesc.isNotBlank()) {
+                "Aim: $practicalAim\n\nDescription: $practicalDesc"
+            } else {
+                "Aim: $practicalAim"
+            }
+            copyToClipboard("Practical Details", combinedText)
+        }
+        
+        btnPasteTheory.setOnClickListener { pasteToEditText(etTheory, "Theory") }
+        btnPasteConclusion.setOnClickListener { pasteToEditText(etConclusion, "Conclusion") }
 
         // ── AI: Theory ────────────────────────────────────────────────────
         btnAiTheory.setOnClickListener {
@@ -212,9 +234,85 @@ class SubmitPracticalActivity : AppCompatActivity() {
             }
         }
 
+        // ── Draft Handling ────────────────────────────────────────────────
+        
+        // Auto-save on change
+        etTheory.addTextChangedListener { saveCurrentDraft() }
+        etConclusion.addTextChangedListener { saveCurrentDraft() }
+
+        viewModel.draftState.observe(this) { draft ->
+            if (draft != null) {
+                // Only load if the current fields are empty (don't overwrite what they're typing)
+                if (etTheory.text.isBlank() && draft.theory.isNotBlank()) {
+                    etTheory.setText(draft.theory)
+                }
+                if (etConclusion.text.isBlank() && draft.conclusion.isNotBlank()) {
+                    etConclusion.setText(draft.conclusion)
+                }
+            }
+        }
+
+        // Load existing draft
+        viewModel.loadDraft(practicalId)
+
         // Login is needed here too (in case activity is resumed fresh)
         if (viewModel.loginState.value !is UiState.Success) {
             viewModel.init()
+        }
+    }
+
+    private fun saveCurrentDraft() {
+        val theory = etTheory.text.toString()
+        val conclusion = etConclusion.text.toString()
+        if (theory.isNotBlank() || conclusion.isNotBlank()) {
+            viewModel.saveDraft(practicalId, theory, conclusion)
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menu?.add(0, 1, 0, "Clear Draft")?.apply {
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 1) {
+            AlertDialog.Builder(this)
+                .setTitle("Clear Draft?")
+                .setMessage("This will remove your saved theory and conclusion for this practical.")
+                .setPositiveButton("Clear") { _, _ ->
+                    etTheory.setText("")
+                    etConclusion.setText("")
+                    viewModel.deleteDraft(practicalId)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
+    private fun copyToClipboard(label: String, text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText(label, text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "$label copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun pasteToEditText(editText: EditText, label: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        if (clipboard.hasPrimaryClip()) {
+            val item = clipboard.primaryClip?.getItemAt(0)
+            val pasteData = item?.text
+            if (pasteData != null) {
+                editText.setText(pasteData)
+                Toast.makeText(this, "Pasted into $label", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Clipboard is empty or not text", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "Clipboard is empty", Toast.LENGTH_SHORT).show()
         }
     }
 

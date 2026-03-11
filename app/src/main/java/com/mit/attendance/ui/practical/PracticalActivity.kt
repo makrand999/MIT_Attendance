@@ -18,7 +18,7 @@ import com.mit.attendance.model.PracticalSubject
 class PracticalActivity : AppCompatActivity() {
 
     private val viewModel: PracticalViewModel by viewModels {
-        PracticalViewModelFactory(UserPreferences(applicationContext))
+        PracticalViewModelFactory(application, UserPreferences(applicationContext))
     }
 
     private lateinit var recyclerView: RecyclerView

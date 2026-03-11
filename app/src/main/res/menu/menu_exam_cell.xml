@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/menu_marks"
+        android:title="Marks"
+        app:showAsAction="always">
+        <menu>
+            <item
+                android:id="@+id/menu_overall_marks"
+                android:title="Overall Marks" />
+            <item
+                android:id="@+id/menu_semwise_marks"
+                android:title="Semwise" />
+            <item
+                android:id="@+id/menu_honor_minor"
+                android:title="Honor &amp; Minor" />
+        </menu>
+    </item>
+    <item
+        android:id="@+id/menu_download"
+        android:title="Download"
+        app:showAsAction="always">
+        <menu>
+            <item
+                android:id="@+id/menu_internal"
+                android:title="Internal" />
+            <item
+                android:id="@+id/menu_hall_ticket"
+                android:title="Hall Ticket" />
+            <item
+                android:id="@+id/menu_script"
+                android:title="Script" />
+        </menu>
+    </item>
+</menu>

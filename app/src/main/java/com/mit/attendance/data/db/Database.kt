@@ -2,59 +2,52 @@ package com.mit.attendance.data.db
 
 import android.content.Context
 import androidx.room.*
-import com.mit.attendance.model.AttendanceEntity
-import com.mit.attendance.model.SubjectEntity
+import com.mit.attendance.model.*
 import kotlinx.coroutines.flow.Flow
-
-// ── Type Converters ───────────────────────────────────────────────────────────
-
-class Converters {
-    @TypeConverter fun fromBoolean(value: Boolean): Int = if (value) 1 else 0
-    @TypeConverter fun toBoolean(value: Int): Boolean = value == 1
-}
-
-// ── JOIN result ───────────────────────────────────────────────────────────────
-
-data class SubjectWithNewCount(
-    @Embedded val entity: SubjectEntity,
-    val newCount: Long,
-    val actualPresent: Long,
-    val actualAbsent: Long,
-    val actualTotal: Long
-)
 
 // ── Subject DAO ───────────────────────────────────────────────────────────────
 
 @Dao
 interface SubjectDao {
 
-    @Query("""
-    SELECT 
-        s.*,
-        COUNT(CASE WHEN a.isNew = 1 THEN 1 END) AS newCount,
-        COUNT(CASE WHEN a.status = 'P' THEN 1 END) AS actualPresent,
-        COUNT(CASE WHEN a.status = 'A' THEN 1 END) AS actualAbsent,
-        COUNT(a.date) AS actualTotal
-    FROM subjects s
-    LEFT JOIN attendance_records a ON s.subjectName = a.subjectName
-    GROUP BY s.subjectName
-    ORDER BY s.subjectName
-""")
-    fun getAllSubjectsWithNewCounts(): Flow<List<SubjectWithNewCount>>
+    @Query("SELECT * FROM subjects ORDER BY subjectName ASC")
+    fun getAllSubjects(): Flow<List<SubjectEntity>>
 
-    @Query("SELECT * FROM subjects ORDER BY subjectName")
+    @Query("SELECT * FROM subjects ORDER BY subjectName ASC")
     suspend fun getAllSubjectsList(): List<SubjectEntity>
-    
+
     @Query("SELECT * FROM subjects WHERE subjectName = :name LIMIT 1")
     suspend fun getSubjectByName(name: String): SubjectEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * Joins subjects with attendance_records to count how many 'isNew' entries exist per subject.
+     * Also provides actual totals based on the attendance records.
+     */
+    @Query("""
+        SELECT 
+            s.*, 
+            COUNT(CASE WHEN a.isNew = 1 THEN 1 END) as newCount,
+            COUNT(CASE WHEN a.status = 'P' THEN 1 END) as actualPresent,
+            COUNT(CASE WHEN a.status = 'A' THEN 1 END) as actualAbsent,
+            COUNT(a.subjectName) as actualTotal
+        FROM subjects s
+        LEFT JOIN attendance_records a ON s.subjectName = a.subjectName
+        GROUP BY s.subjectName
+        ORDER BY s.subjectName ASC
+    """)
+    fun getAllSubjectsWithNewCounts(): Flow<List<SubjectWithStats>>
+
+    data class SubjectWithStats(
+        @Embedded val subject: SubjectEntity,
+        val newCount: Int,
+        val actualPresent: Long,
+        val actualAbsent: Long,
+        val actualTotal: Long
+    )
+
+    @Upsert
     suspend fun upsertSubjects(subjects: List<SubjectEntity>)
 
-    /**
-     * Deletes subjects that are not in the provided list of names.
-     * This "purges" old subjects that the server no longer reports.
-     */
     @Query("DELETE FROM subjects WHERE subjectName NOT IN (:names)")
     suspend fun deleteNotIn(names: List<String>)
 
@@ -81,8 +74,8 @@ interface AttendanceDao {
     """)
     suspend fun getAttendanceForSubjectList(subjectName: String): List<AttendanceEntity>
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertIfNotExists(records: List<AttendanceEntity>): List<Long>
+    @Upsert
+    suspend fun upsertRecords(records: List<AttendanceEntity>): List<Long>
 
     @Query("""
         UPDATE attendance_records
@@ -104,17 +97,52 @@ interface AttendanceDao {
     suspend fun deleteAll()
 }
 
+// ── Practical DAO ─────────────────────────────────────────────────────────────
+
+@Dao
+interface PracticalDao {
+    @Query("SELECT * FROM practical_subjects ORDER BY subjectname ASC")
+    suspend fun getAllSubjects(): List<PracticalSubject>
+
+    @Upsert
+    suspend fun upsertSubjects(subjects: List<PracticalSubject>)
+
+    @Query("SELECT * FROM practicals WHERE subjectId = :subjectId")
+    suspend fun getPracticalsForSubject(subjectId: Int): List<Practical>
+
+    @Query("SELECT * FROM practicals WHERE id = :id LIMIT 1")
+    suspend fun getPracticalById(id: Int): Practical?
+
+    @Upsert
+    suspend fun upsertPracticals(practicals: List<Practical>)
+
+    @Query("UPDATE practicals SET theory = :theory, conclusion = :conclusion, isSubmitted = 1 WHERE id = :id")
+    suspend fun updatePracticalSubmission(id: Int, theory: String, conclusion: String)
+
+    @Query("DELETE FROM practicals WHERE subjectId = :subjectId")
+    suspend fun deletePracticalsForSubject(subjectId: Int)
+}
+
 // ── Database ──────────────────────────────────────────────────────────────────
 
 @Database(
-    entities = [SubjectEntity::class, AttendanceEntity::class],
-    version = 1,
+    entities = [
+        SubjectEntity::class, 
+        AttendanceEntity::class, 
+        ReviewEntity::class, 
+        PracticalDraft::class,
+        PracticalSubject::class,
+        Practical::class
+    ], 
+    version = 4, 
     exportSchema = false
 )
-@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun subjectDao(): SubjectDao
     abstract fun attendanceDao(): AttendanceDao
+    abstract fun reviewDao(): ReviewDao
+    abstract fun practicalDraftDao(): PracticalDraftDao
+    abstract fun practicalDao(): PracticalDao
 
     companion object {
         @Volatile
@@ -125,8 +153,10 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "mit_attendance_db"
-                ).build()
+                    "attendance_database"
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

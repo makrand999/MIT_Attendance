@@ -29,4 +29,8 @@
     <color name="divider">#E0E0E0</color>
     <color name="badge_new">#1B5E20</color>
     <color name="toolbar_text">#FFFFFF</color>
+
+    <!-- Reviews -->
+    <color name="review_female_bg">#FFF1F3</color>
+    <color name="review_normal_bg">@color/card_background</color>
 </resources>

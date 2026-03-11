@@ -1,6 +1,8 @@
 package com.mit.attendance.data.api
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -11,7 +13,9 @@ import org.json.JSONObject
 
 object GeminiService {
 
-    private const val API_KEY = "---api--key--"
+    private const val TAG = "GeminiService"
+    //private const val API_KEY = "AIzaSyB7I7kNSHIk9iz_F-cspqZI-DpZkHUwJl0"
+    private const val API_KEY = "no api key"
     private const val MODEL   = "gemini-2.0-flash"
     private const val URL     =
         "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$API_KEY"
@@ -26,6 +30,11 @@ object GeminiService {
 
     suspend fun generateConclusion(aim: String, description: String?): Result<String> =
         generate(conclusionPrompt(aim, description))
+
+    /**
+     * Simple ping to verify if the API key and connectivity are working.
+     */
+    suspend fun ping(): Result<String> = generate("Say 'pong'")
 
     // ── Prompts ────────────────────────────────────────────────────────────
 
@@ -61,7 +70,9 @@ Rules you MUST follow:
 
     private suspend fun generate(prompt: String): Result<String> =
         withContext(Dispatchers.IO) {
-            runCatching {
+            try {
+                Log.d(TAG, "Generating content...")
+                
                 val bodyJson = JSONObject().apply {
                     put("contents", JSONArray().apply {
                         put(JSONObject().apply {
@@ -84,17 +95,36 @@ Rules you MUST follow:
                     .build()
 
                 val resp = client.newCall(req).execute()
+                val code = resp.code
                 val text = resp.body?.string() ?: ""
-                if (!resp.isSuccessful) error("Gemini API error (${resp.code}): $text")
+
+                if (code == 429) {
+                    val msg = "Rate limit hit (429). Please wait a minute before trying again."
+                    Log.e(TAG, msg)
+                    return@withContext Result.failure(Exception(msg))
+                }
+
+                if (!resp.isSuccessful) {
+                    val errorDetail = "Gemini API error ($code): $text"
+                    Log.e(TAG, errorDetail)
+                    return@withContext Result.failure(Exception(errorDetail))
+                }
 
                 val root = JSONObject(text)
-                root.getJSONArray("candidates")
+                val resultText = root.getJSONArray("candidates")
                     .getJSONObject(0)
                     .getJSONObject("content")
                     .getJSONArray("parts")
                     .getJSONObject(0)
                     .getString("text")
                     .trim()
+                
+                Log.d(TAG, "Generation successful")
+                Result.success(resultText)
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception during generation: ${e.message}", e)
+                Result.failure(e)
             }
         }
 }

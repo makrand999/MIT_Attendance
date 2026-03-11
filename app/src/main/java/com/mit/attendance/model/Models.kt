@@ -26,6 +26,10 @@ data class AttendanceApiRecord(
     val etime: String?
 )
 
+data class StudentInfoResponse(
+    val Gender: String?
+)
+
 // ── Room entities ─────────────────────────────────────────────────────────────
 
 @Entity(tableName = "subjects")

@@ -10,7 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-class AttendanceRepository(context: android.content.Context) {
+class AttendanceRepository(private val context: android.content.Context) {
 
     private val TAG = "AttendanceRepo"
 
@@ -20,6 +20,12 @@ class AttendanceRepository(context: android.content.Context) {
 
     private val subjectDao = db.subjectDao()
     private val attendanceDao = db.attendanceDao()
+
+    // ── User Info ─────────────────────────────────────────────────────────────
+
+    fun getGenderFlow(): Flow<String?> = prefs.gender
+
+    suspend fun getGenderSnapshot(): String? = prefs.getGender()
 
     // ── Subjects ──────────────────────────────────────────────────────────────
 
@@ -126,30 +132,55 @@ class AttendanceRepository(context: android.content.Context) {
         val apiRecords = result.getOrThrow()
         if (apiRecords.isEmpty()) return@withContext SyncResult.NoChange
 
-        val existingKeys = attendanceDao.getAttendanceForSubjectList(subjectName)
-            .mapTo(HashSet()) { Triple(it.subjectName, it.date, it.startTime) }
+        // Map existing records for quick lookup: Key -> Existing Record
+        val existingMap = attendanceDao.getAttendanceForSubjectList(subjectName)
+            .associateBy { Triple(it.subjectName, it.date, it.startTime) }
 
         val incoming = apiRecords.mapNotNull { r ->
             val date = r.Date ?: return@mapNotNull null
             val stime = r.stime?.trim() ?: ""
             val etime = r.etime?.trim() ?: ""
+            
             val status = when (r.presenty?.trim()?.lowercase()) {
                 "p", "present", "1" -> "P"
-                else -> "A"
+                "a", "absent", "0" -> "A"
+                else -> return@mapNotNull null // Ignore records that are neither Present nor Absent
             }
+
+            val key = Triple(subjectName, date, stime)
+            val existing = existingMap[key]
+
+            // Mark as 'new' if:
+            // 1. It's not in our database yet
+            // 2. The status has changed (e.g. Absent -> Present)
+            // 3. It was already marked as new (preserve its 'new' badge)
+            val isNew = when {
+                existing == null -> true
+                existing.status != status -> true
+                else -> existing.isNew
+            }
+
             AttendanceEntity(
                 subjectName = subjectName,
                 date = date,
                 status = status,
                 startTime = stime,
                 endTime = etime,
-                isNew = Triple(subjectName, date, stime) !in existingKeys
+                isNew = isNew,
+                seenAt = if (existing != null && existing.status == status) existing.seenAt else null
             )
         }
 
-        val insertedRows = attendanceDao.insertIfNotExists(incoming)
-        val newCount = insertedRows.count { it != -1L }
-        return@withContext if (newCount > 0) SyncResult.Success(newCount) else SyncResult.NoChange
+        // Use the newly added upsert method to update existing records
+        val insertedRows = attendanceDao.upsertRecords(incoming)
+        
+        // Count how many records were actually "new changes" that the user hasn't seen yet
+        val newChangesCount = incoming.count { 
+            val wasAlreadyNew = existingMap[Triple(it.subjectName, it.date, it.startTime)]?.isNew == true
+            it.isNew && !wasAlreadyNew 
+        }
+
+        return@withContext if (newChangesCount > 0) SyncResult.Success(newChangesCount) else SyncResult.NoChange
     }
 
     suspend fun markAttendanceAsSeen(subjectName: String) = withContext(Dispatchers.IO) {
@@ -165,6 +196,16 @@ class AttendanceRepository(context: android.content.Context) {
         val result = api.login(email, password, semId)
         if (result is LoginResult.Success) {
             prefs.saveCredentials(email, password, semId)
+            // Fetch and save gender after successful login
+            try {
+                val infoResult = api.fetchStudentInfo(email, password, semId)
+                infoResult.getOrNull()?.Gender?.let { gender ->
+                    prefs.saveGender(gender)
+                    Log.d(TAG, "Saved user gender: $gender")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to fetch student info during login", e)
+            }
         }
         return@withContext result
     }
@@ -183,6 +224,16 @@ class AttendanceRepository(context: android.content.Context) {
 
         // Auto-fix duplicates before normal sync
         autoFixDuplicates()
+
+        // Sync gender if not present
+        if (prefs.getGender() == null) {
+            api.fetchStudentInfo(creds.email, creds.password, creds.semId).getOrNull()?.Gender?.let {
+                prefs.saveGender(it)
+            }
+        }
+
+        // Sync reviews every time app opens
+        ReviewRepository(context).syncReviews()
 
         syncSubjects(creds.semId, creds.email, creds.password)
         val subjects = subjectDao.getAllSubjectsList()

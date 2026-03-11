@@ -3,9 +3,33 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_chat"
+        android:title="Anonymous Chat"
+        android:orderInCategory="40"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_erp"
+        android:title="ERP"
+        android:orderInCategory="45"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_exam_cell"
+        android:title="Exam Cell "
+        android:orderInCategory="46"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_practical"
         android:title="Practical"
         android:orderInCategory="50"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_reviews"
+        android:title="Reviews"
+        android:orderInCategory="55"
         app:showAsAction="never" />
 
     <item

@@ -1,8 +1,10 @@
 package com.mit.attendance.ui.practical
 
+import android.app.Application
 import androidx.lifecycle.*
 import com.mit.attendance.data.PracticalRepository
 import com.mit.attendance.data.api.GeminiService
+import com.mit.attendance.data.db.AppDatabase
 import com.mit.attendance.data.prefs.UserPreferences
 import com.mit.attendance.model.*
 import kotlinx.coroutines.launch
@@ -14,9 +16,12 @@ sealed class UiState<out T> {
     data class Error(val message: String) : UiState<Nothing>()
 }
 
-class PracticalViewModel(private val userPrefs: UserPreferences) : ViewModel() {
+class PracticalViewModel(application: Application, private val userPrefs: UserPreferences) : AndroidViewModel(application) {
 
     private var repo: PracticalRepository? = null
+    private val db = AppDatabase.getDatabase(application)
+    private val draftDao = db.practicalDraftDao()
+    private val practicalDao = db.practicalDao()
 
     // ── Login ──────────────────────────────────────────────────────────────
     private val _loginState = MutableLiveData<UiState<Unit>>(UiState.Idle)
@@ -41,13 +46,19 @@ class PracticalViewModel(private val userPrefs: UserPreferences) : ViewModel() {
     private val _conclusionAiState = MutableLiveData<UiState<String>>(UiState.Idle)
     val conclusionAiState: LiveData<UiState<String>> = _conclusionAiState
 
+    // ── Drafts ─────────────────────────────────────────────────────────────
+    private val _draftState = MutableLiveData<PracticalDraft?>(null)
+    val draftState: LiveData<PracticalDraft?> = _draftState
+
     // ── Init ───────────────────────────────────────────────────────────────
 
     fun init() {
         if (repo != null) return
         viewModelScope.launch {
             val email = userPrefs.getEmail() ?: ""
-            repo = PracticalRepository(email)
+            val r = PracticalRepository(email, practicalDao, userPrefs)
+            r.restoreSession()
+            repo = r
             loginAndLoad()
         }
     }
@@ -62,7 +73,9 @@ class PracticalViewModel(private val userPrefs: UserPreferences) : ViewModel() {
                     loadSubjects()
                 }
                 .onFailure {
+                    // Even if login fails (offline), we still try to load subjects from cache
                     _loginState.value = UiState.Error(it.message ?: "Login failed")
+                    loadSubjects() 
                 }
         }
     }
@@ -98,7 +111,10 @@ class PracticalViewModel(private val userPrefs: UserPreferences) : ViewModel() {
         _submitState.value = UiState.Loading
         viewModelScope.launch {
             currentRepo.submitPractical(subjectId, practicalId, practicalNumber, theory, conclusion)
-                .onSuccess  { _submitState.value = UiState.Success(Unit) }
+                .onSuccess  { 
+                    _submitState.value = UiState.Success(Unit)
+                    deleteDraft(practicalId) // Clear draft on successful submit
+                }
                 .onFailure  { _submitState.value = UiState.Error(it.message ?: "Submit failed") }
         }
     }
@@ -127,10 +143,31 @@ class PracticalViewModel(private val userPrefs: UserPreferences) : ViewModel() {
 
     fun resetTheoryAiState()     { _theoryAiState.value     = UiState.Idle }
     fun resetConclusionAiState() { _conclusionAiState.value = UiState.Idle }
+
+    // ── Draft Helpers ──────────────────────────────────────────────────────
+
+    fun saveDraft(practicalId: Int, theory: String, conclusion: String) {
+        viewModelScope.launch {
+            draftDao.upsertDraft(PracticalDraft(practicalId, theory, conclusion))
+        }
+    }
+
+    fun loadDraft(practicalId: Int) {
+        viewModelScope.launch {
+            _draftState.value = draftDao.getDraft(practicalId)
+        }
+    }
+
+    fun deleteDraft(practicalId: Int) {
+        viewModelScope.launch {
+            draftDao.deleteDraft(practicalId)
+            _draftState.value = null
+        }
+    }
 }
 
-class PracticalViewModelFactory(private val userPrefs: UserPreferences) : ViewModelProvider.Factory {
+class PracticalViewModelFactory(private val application: Application, private val userPrefs: UserPreferences) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        PracticalViewModel(userPrefs) as T
+        PracticalViewModel(application, userPrefs) as T
 }

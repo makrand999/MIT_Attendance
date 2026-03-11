@@ -1,14 +1,21 @@
 package com.mit.attendance.ui.subjects
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.*
 import androidx.recyclerview.widget.AsyncListDiffer
@@ -24,10 +31,13 @@ import com.mit.attendance.databinding.ItemSubjectBinding
 import com.mit.attendance.model.SingleLiveEvent
 import com.mit.attendance.model.SubjectUiModel
 import com.mit.attendance.service.AttendanceSyncWorker
+import com.mit.attendance.ui.chat.ChatActivity
 import com.mit.attendance.ui.detail.AttendanceDetailActivity
 import com.mit.attendance.ui.login.LoginActivity
 import com.mit.attendance.ui.practical.PracticalActivity
+import com.mit.attendance.ui.reviews.ReviewsActivity
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -39,11 +49,11 @@ class SubjectsViewModel(private val repo: AttendanceRepository) : ViewModel() {
     private val _isRefreshing = MutableLiveData(false)
     val isRefreshing: LiveData<Boolean> = _isRefreshing
 
-    // FIX: was MutableLiveData — replays on rotation. Now SingleLiveEvent fires once only.
     private val _error = SingleLiveEvent<String>()
     val error: LiveData<String> = _error
 
     val notificationsEnabled = repo.prefs.notificationsEnabled
+    val hasRequestedNotifPermission = repo.prefs.hasRequestedNotifPermission
 
     init { refresh() }
 
@@ -63,6 +73,10 @@ class SubjectsViewModel(private val repo: AttendanceRepository) : ViewModel() {
 
     fun toggleNotifications(enabled: Boolean) {
         viewModelScope.launch { repo.prefs.setNotificationsEnabled(enabled) }
+    }
+
+    fun setHasRequestedNotifPermission(requested: Boolean) {
+        viewModelScope.launch { repo.prefs.setHasRequestedNotifPermission(requested) }
     }
 
     fun logout() {
@@ -85,9 +99,21 @@ class SubjectsActivity : AppCompatActivity() {
     private val viewModel: SubjectsViewModel by viewModels { SubjectsViewModelFactory(applicationContext) }
     private lateinit var adapter: SubjectAdapter
 
-    // FIX: menu notification state is tracked here, not in a leaking coroutine
-    // launched inside onPrepareOptionsMenu.
     private var notificationsOn = true
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        viewModel.setHasRequestedNotifPermission(true)
+        if (isGranted) {
+            viewModel.toggleNotifications(true)
+            AttendanceSyncWorker.schedule(applicationContext)
+            Snackbar.make(binding.root, "Notifications enabled", Snackbar.LENGTH_SHORT).show()
+        } else {
+            viewModel.toggleNotifications(false)
+            Snackbar.make(binding.root, "Permission denied. Notifications disabled.", Snackbar.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,19 +127,37 @@ class SubjectsActivity : AppCompatActivity() {
         setupSwipeRefresh()
         observeData()
 
-        // Check for app updates
         lifecycleScope.launch {
             UpdateChecker.checkForUpdates(this@SubjectsActivity)
         }
 
-        // FIX: collect notification state ONCE in onCreate, not on every
-        // onPrepareOptionsMenu call (which launched a new coroutine each time,
-        // leaking collectors and causing menu title flicker).
         lifecycleScope.launch {
             viewModel.notificationsEnabled.collect { enabled ->
                 notificationsOn = enabled
+                if (enabled && !isNotificationPermissionGranted()) {
+                    notificationsOn = false
+                    viewModel.toggleNotifications(false)
+                }
                 invalidateOptionsMenu()
             }
+        }
+
+        // Auto-request permission once on first launch
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            lifecycleScope.launch {
+                val hasRequested = viewModel.hasRequestedNotifPermission.first()
+                if (!hasRequested && !isNotificationPermissionGranted()) {
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        }
+    }
+
+    private fun isNotificationPermissionGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
         }
     }
 
@@ -123,8 +167,6 @@ class SubjectsActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        // FIX: reads from local state updated by the single collector above —
-        // no coroutine launched here, no leak.
         menu.findItem(R.id.action_notifications)?.title =
             if (notificationsOn) "Notifications: ON" else "Notifications: OFF"
         return super.onPrepareOptionsMenu(menu)
@@ -132,20 +174,28 @@ class SubjectsActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_chat -> {
+                startActivity(Intent(this, ChatActivity::class.java))
+                true
+            }
+            R.id.action_erp -> {
+                startActivity(Intent(this, ErpWebViewActivity::class.java))
+                true
+            }
+            R.id.action_exam_cell -> {
+                startActivity(Intent(this, ExamCellWebViewActivity::class.java))
+                true
+            }
             R.id.action_practical -> {
                 startActivity(Intent(this, PracticalActivity::class.java))
                 true
             }
+            R.id.action_reviews -> {
+                startActivity(Intent(this, ReviewsActivity::class.java))
+                true
+            }
             R.id.action_notifications -> {
-                val newEnabled = !notificationsOn
-                viewModel.toggleNotifications(newEnabled)
-                if (newEnabled) AttendanceSyncWorker.schedule(applicationContext)
-                else AttendanceSyncWorker.cancel(applicationContext)
-                Snackbar.make(
-                    binding.root,
-                    if (newEnabled) "Notifications enabled" else "Notifications disabled",
-                    Snackbar.LENGTH_SHORT
-                ).show()
+                handleNotificationToggle()
                 true
             }
             R.id.action_share -> {
@@ -173,6 +223,75 @@ class SubjectsActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleNotificationToggle() {
+        val newEnabled = !notificationsOn
+        if (newEnabled) {
+            if (isNotificationPermissionGranted()) {
+                enableNotifications()
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val permission = Manifest.permission.POST_NOTIFICATIONS
+                when {
+                    ActivityCompat.shouldShowRequestPermissionRationale(this, permission) -> {
+                        showPermissionRationaleDialog()
+                    }
+                    else -> {
+                        // This covers both first time and permanent denial (2+ trails)
+                        lifecycleScope.launch {
+                            if (viewModel.hasRequestedNotifPermission.first()) {
+                                showSettingsRedirectDialog()
+                            } else {
+                                requestPermissionLauncher.launch(permission)
+                            }
+                        }
+                    }
+                }
+            } else {
+                enableNotifications()
+            }
+        } else {
+            disableNotifications()
+        }
+    }
+
+    private fun enableNotifications() {
+        viewModel.toggleNotifications(true)
+        AttendanceSyncWorker.schedule(applicationContext)
+        Snackbar.make(binding.root, "Notifications enabled", Snackbar.LENGTH_SHORT).show()
+    }
+
+    private fun disableNotifications() {
+        viewModel.toggleNotifications(false)
+        AttendanceSyncWorker.cancel(applicationContext)
+        Snackbar.make(binding.root, "Notifications disabled", Snackbar.LENGTH_SHORT).show()
+    }
+
+    private fun showPermissionRationaleDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Notification Permission")
+            .setMessage("Notifications help you stay updated with your attendance changes. Please allow the permission.")
+            .setPositiveButton("Allow") { _, _ ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showSettingsRedirectDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Permission Required")
+            .setMessage("Notification permission has been denied. Please enable it in Settings to receive updates.")
+            .setPositiveButton("Settings") { _, _ ->
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", packageName, null)
+                }
+                startActivity(intent)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun setupRecyclerView() {
         adapter = SubjectAdapter { subject ->
             startActivity(
@@ -197,7 +316,6 @@ class SubjectsActivity : AppCompatActivity() {
                 adapter.submitList(subjects)
                 binding.tvEmpty.visibility = if (subjects.isEmpty()) View.VISIBLE else View.GONE
 
-                // Overall attendance footer
                 if (subjects.isNotEmpty()) {
                     val totalPresent = subjects.sumOf { it.present }
                     val totalClasses = subjects.sumOf { it.total }
@@ -234,8 +352,6 @@ class SubjectAdapter(
     private val onClick: (SubjectUiModel) -> Unit
 ) : RecyclerView.Adapter<SubjectAdapter.VH>() {
 
-    // FIX: was a plain mutable list updated manually — unsafe under rapid submitList calls.
-    // AsyncListDiffer runs diff on a background thread and applies updates safely.
     private val differ = AsyncListDiffer(this, object : DiffUtil.ItemCallback<SubjectUiModel>() {
         override fun areItemsTheSame(o: SubjectUiModel, n: SubjectUiModel) = o.id == n.id
         override fun areContentsTheSame(o: SubjectUiModel, n: SubjectUiModel) = o == n
