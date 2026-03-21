@@ -63,14 +63,14 @@ interface AttendanceDao {
     @Query("""
         SELECT * FROM attendance_records
         WHERE subjectName = :subjectName
-        ORDER BY date DESC, startTime DESC
+        ORDER BY serverOrder DESC
     """)
     fun getAttendanceForSubject(subjectName: String): Flow<List<AttendanceEntity>>
 
     @Query("""
         SELECT * FROM attendance_records
         WHERE subjectName = :subjectName
-        ORDER BY date DESC, startTime DESC
+        ORDER BY serverOrder DESC
     """)
     suspend fun getAttendanceForSubjectList(subjectName: String): List<AttendanceEntity>
 
@@ -134,7 +134,7 @@ interface PracticalDao {
         PracticalSubject::class,
         Practical::class
     ], 
-    version = 4, 
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

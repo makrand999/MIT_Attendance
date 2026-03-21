@@ -32,9 +32,15 @@
     </style>
 
     <style name="Theme.MITAttendance.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/primary</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_notification</item>
-        <item name="postSplashScreenTheme">@style/Theme.MITAttendance</item>
+        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.MITAttendance.FullScreenSplash</item>
+    </style>
+
+    <style name="Theme.MITAttendance.FullScreenSplash" parent="Theme.MITAttendance">
+        <item name="android:windowBackground">@drawable/ic_icon</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
     </style>
 
     <style name="CardStyle" parent="Widget.Material3.CardView.Elevated">
@@ -50,6 +56,15 @@
         <item name="android:paddingEnd">6dp</item>
         <item name="android:paddingTop">2dp</item>
         <item name="android:paddingBottom">2dp</item>
+    </style>
+
+    <style name="TransparentDialog" parent="Theme.Material3.DayNight.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowFrame">@null</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.9</item>
     </style>
 
 </resources>

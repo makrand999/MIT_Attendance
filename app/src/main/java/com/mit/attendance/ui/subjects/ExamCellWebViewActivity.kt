@@ -4,13 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.webkit.CookieManager
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.webkit.*
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -22,28 +20,70 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.*
-import okhttp3.FormBody
-import org.jsoup.Jsoup
-import java.net.CookieHandler
-import java.net.CookiePolicy
-import java.net.URI
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.logging.HttpLoggingInterceptor
+import java.util.concurrent.TimeUnit
 
 class ExamCellWebViewActivity : AppCompatActivity() {
 
+    companion object {
+        private const val TAG = "ExamCellWeb"
+    }
+
     private lateinit var binding: ActivityErpWebviewBinding
     private lateinit var prefs: UserPreferences
-    private val client = OkHttpClient.Builder()
-        .cookieJar(JavaNetCookieJar(CookieHandler.getDefault() ?: java.net.CookieManager().apply {
-            setCookiePolicy(CookiePolicy.ACCEPT_ALL)
-            CookieHandler.setDefault(this)
-        }))
-        .followRedirects(true)
-        .build()
+    
+    private val userAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+
+    private val myCookieJar = object : CookieJar {
+        private val storage = mutableMapOf<String, Cookie>()
+        
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+            cookies.forEach { 
+                Log.d("ExamCellNetwork", "Server set-cookie: ${it.name}=${it.value}")
+                storage[it.name] = it 
+            }
+        }
+
+        override fun loadForRequest(url: HttpUrl): List<Cookie> {
+            return storage.values.toList()
+        }
+        
+        fun getAllCookies() = storage.values.toList()
+        fun clear() = storage.clear()
+    }
+
+    private val client: OkHttpClient by lazy {
+        val logging = HttpLoggingInterceptor { message ->
+            Log.d("ExamCellNetwork", message)
+        }.apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+
+        OkHttpClient.Builder()
+            .cookieJar(myCookieJar)
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", userAgent)
+                    .build()
+                chain.proceed(request)
+            }
+            .addNetworkInterceptor(logging)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityErpWebviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Show toolbar and hide custom back button for ExamCell
+        binding.toolbar.visibility = View.VISIBLE
+        binding.btnBack.visibility = View.GONE
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -54,25 +94,26 @@ class ExamCellWebViewActivity : AppCompatActivity() {
         setupWebView()
         
         lifecycleScope.launch {
-            val userId = prefs.getExamCellUserId()
-            if (userId.isNullOrEmpty()) {
-                startActivity(Intent(this@ExamCellWebViewActivity, ExamCellLoginActivity::class.java))
-                finish()
-                return@launch
+            val storedPayload = prefs.getExamCellPayload()
+            val fullBody = storedPayload?.get("fullBody")
+
+            if (!fullBody.isNullOrEmpty()) {
+                Log.d(TAG, "Found stored full body payload, attempting background login")
+                binding.progressBar.visibility = View.VISIBLE
+                val loginSuccess = performBackgroundLogin(fullBody, storedPayload["url"] ?: "https://mitaexamcell.in/Login.aspx")
+                binding.progressBar.visibility = View.GONE
+                
+                if (loginSuccess) {
+                    Log.d(TAG, "Background login successful")
+                    binding.webView.loadUrl("https://mitaexamcell.in/StudentLogin/MainStud.aspx")
+                    return@launch
+                } else {
+                    Log.w(TAG, "Background login with stored payload failed")
+                }
             }
-            
-            binding.progressBar.visibility = View.VISIBLE
-            val success = performBackgroundLogin(userId, userId)
-            binding.progressBar.visibility = View.GONE
-            
-            if (success) {
-                binding.webView.loadUrl("https://mitaexamcell.in/StudentLogin/MainStud.aspx")
-            } else {
-                Toast.makeText(this@ExamCellWebViewActivity, "Login failed. Please check credentials.", Toast.LENGTH_LONG).show()
-                prefs.saveExamCellUserId("")
-                startActivity(Intent(this@ExamCellWebViewActivity, ExamCellLoginActivity::class.java))
-                finish()
-            }
+
+            Log.d(TAG, "Loading login page for manual login")
+            binding.webView.loadUrl("https://mitaexamcell.in/Login.aspx")
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -87,109 +128,142 @@ class ExamCellWebViewActivity : AppCompatActivity() {
         })
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun setupWebView() {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+
         binding.webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
+            databaseEnabled = true
             useWideViewPort = true
             loadWithOverviewMode = true
             builtInZoomControls = true
             displayZoomControls = false
+            userAgentString = userAgent
+            
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            allowFileAccess = true
+            allowContentAccess = true
+            
+            javaScriptCanOpenWindowsAutomatically = true
         }
+
+        binding.webView.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun onLoginAttempt(body: String, url: String) {
+                lifecycleScope.launch {
+                    Log.d(TAG, "Captured login request body. Saving to disk...")
+                    prefs.saveExamCellFullBody(body, url)
+                }
+            }
+        }, "LoginInterceptor")
+
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
 
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                Log.d(TAG, "WebView loading: $url")
                 binding.progressBar.visibility = View.VISIBLE
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
+                Log.d(TAG, "WebView finished: $url")
                 binding.progressBar.visibility = View.GONE
+                CookieManager.getInstance().flush()
+
+                if (url?.contains("Login.aspx", ignoreCase = true) == true) {
+                    injectLoginInterceptor()
+                }
             }
 
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                return false
+            override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: WebResourceResponse?) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                Log.e(TAG, "WebView HTTP Error: ${errorResponse?.statusCode} for ${request?.url}")
             }
         }
     }
 
-    private suspend fun performBackgroundLogin(userId: String, pass: String): Boolean = withContext(Dispatchers.IO) {
+    private fun injectLoginInterceptor() {
+        // Intercept form submission to capture the exact POST body
+        val js = """
+            (function() {
+                var form = document.forms[0];
+                if (form) {
+                    var originalSubmit = form.submit;
+                    form.onsubmit = function() {
+                        var formData = new FormData(form);
+                        var params = new URLSearchParams();
+                        for (var pair of formData.entries()) {
+                            params.append(pair[0], pair[1]);
+                        }
+                        LoginInterceptor.onLoginAttempt(params.toString(), window.location.href);
+                        return true;
+                    };
+                    
+                    // Also hook btnLogin click just in case
+                    var btn = document.getElementById('btnLogin');
+                    if (btn) {
+                        btn.addEventListener('click', function() {
+                            var formData = new FormData(form);
+                            var params = new URLSearchParams();
+                            for (var pair of formData.entries()) {
+                                params.append(pair[0], pair[1]);
+                            }
+                            LoginInterceptor.onLoginAttempt(params.toString(), window.location.href);
+                        });
+                    }
+                }
+            })();
+        """.trimIndent()
+        binding.webView.evaluateJavascript(js, null)
+    }
+
+    private suspend fun performBackgroundLogin(fullBody: String, loginUrl: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 1. GET initial page to get session cookie
-            val req1 = Request.Builder()
-                .url("https://mitaexamcell.in/StudentLogin/Student/overallMarks.aspx")
-                .build()
-            val res1 = client.newCall(req1).execute()
-            var doc = Jsoup.parse(res1.body?.string() ?: "")
-
-            // 2. POST to lnkLogins
-            val form2 = FormBody.Builder()
-                .add("__EVENTTARGET", "lnkLogins")
-                .add("__VIEWSTATE", doc.select("#__VIEWSTATE").attr("value"))
-                .add("__VIEWSTATEGENERATOR", doc.select("#__VIEWSTATEGENERATOR").attr("value"))
-                .add("__EVENTVALIDATION", doc.select("#__EVENTVALIDATION").attr("value"))
-                .build()
-            val req2 = Request.Builder()
-                .url("https://mitaexamcell.in/Login.aspx")
-                .post(form2)
-                .build()
-            val res2 = client.newCall(req2).execute()
-            doc = Jsoup.parse(res2.body?.string() ?: "")
-
-            // 3. POST to lnkStudent
-            val form3 = FormBody.Builder()
-                .add("__EVENTTARGET", "lnkStudent")
-                .add("__VIEWSTATE", doc.select("#__VIEWSTATE").attr("value"))
-                .add("__VIEWSTATEGENERATOR", doc.select("#__VIEWSTATEGENERATOR").attr("value"))
-                .add("__EVENTVALIDATION", doc.select("#__EVENTVALIDATION").attr("value"))
-                .build()
-            val req3 = Request.Builder()
-                .url("https://mitaexamcell.in/Login.aspx")
-                .post(form3)
-                .build()
-            val res3 = client.newCall(req3).execute()
-            doc = Jsoup.parse(res3.body?.string() ?: "")
-
-            // 4. Final Login POST
-            val form4 = FormBody.Builder()
-                .add("txtUserId", userId)
-                .add("txtPwd", pass)
-                .add("btnLogin", "Login")
-                .add("__VIEWSTATE", doc.select("#__VIEWSTATE").attr("value"))
-                .add("__VIEWSTATEGENERATOR", doc.select("#__VIEWSTATEGENERATOR").attr("value"))
-                .add("__EVENTVALIDATION", doc.select("#__EVENTVALIDATION").attr("value"))
-                .build()
-            val req4 = Request.Builder()
-                .url("https://mitaexamcell.in/Login.aspx")
-                .post(form4)
-                .build()
-            val res4 = client.newCall(req4).execute()
-            val finalHtml = res4.body?.string() ?: ""
-            
-            if (finalHtml.contains("Invalid") || finalHtml.contains("Login.aspx")) {
-                 return@withContext false
-            }
-
-            // Sync cookies to WebView
             val cookieManager = CookieManager.getInstance()
-            cookieManager.setAcceptCookie(true)
-            
-            val uri = URI.create("https://mitaexamcell.in")
-            val store = (CookieHandler.getDefault() as java.net.CookieManager).cookieStore
-            val cookies = store.get(uri)
-            
-            for (cookie in cookies) {
-                val cookieStr = "${cookie.name}=${cookie.value}; domain=${cookie.domain ?: "mitaexamcell.in"}; path=${cookie.path ?: "/"}"
-                cookieManager.setCookie("https://mitaexamcell.in", cookieStr)
+            withContext(Dispatchers.Main) {
+                cookieManager.removeAllCookies(null)
+                cookieManager.flush()
+                binding.webView.clearCache(true)
             }
+            
+            myCookieJar.clear()
+
+            val mediaType = "application/x-www-form-urlencoded".toMediaType()
+            val body = fullBody.toRequestBody(mediaType)
+            
+            val req = Request.Builder()
+                .url(loginUrl)
+                .post(body)
+                .header("Referer", loginUrl)
+                .header("Origin", "https://mitaexamcell.in")
+                .build()
+                
+            val noRedirectClient = client.newBuilder().followRedirects(false).build()
+            val res = noRedirectClient.newCall(req).execute()
+            
+            Log.d(TAG, "POST Response Code: ${res.code}")
+            
+            val cookies = myCookieJar.getAllCookies()
+            val aspxAuth = cookies.find { it.name == ".ASPXAUTH" }
             
             withContext(Dispatchers.Main) {
+                for (cookie in cookies) {
+                    val cookieStr = "${cookie.name}=${cookie.value}; Domain=.mitaexamcell.in; Path=/; Secure; SameSite=None"
+                    cookieManager.setCookie("https://mitaexamcell.in", cookieStr)
+                }
                 cookieManager.flush()
             }
 
-            return@withContext true
+            return@withContext res.code == 302 || aspxAuth != null
+
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error in performBackgroundLogin", e)
             false
         }
     }
@@ -231,50 +305,5 @@ class ExamCellWebViewActivity : AppCompatActivity() {
             }
         }
         return super.onOptionsItemSelected(item)
-    }
-
-    private class JavaNetCookieJar(private val cookieHandler: CookieHandler) : CookieJar {
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            val cookieMap = mutableMapOf<String, List<String>>()
-            cookieMap["Set-Cookie"] = cookies.map { it.toString() }
-            cookieHandler.put(url.toUri(), cookieMap)
-        }
-
-        override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            val cookieHeaders = cookieHandler.get(url.toUri(), emptyMap())
-            val cookies = mutableListOf<Cookie>()
-            for ((key, value) in cookieHeaders) {
-                if (("Cookie".equals(key, ignoreCase = true) || "Cookie2".equals(key, ignoreCase = true)) && value.isNotEmpty()) {
-                    for (header in value) {
-                        cookies.addAll(decodeHeader(url, header))
-                    }
-                }
-            }
-            return cookies
-        }
-        
-        private fun decodeHeader(url: HttpUrl, header: String): List<Cookie> {
-            val result = mutableListOf<Cookie>()
-            var pos = 0
-            val limit = header.length
-            while (pos < limit) {
-                val pairEnd = header.indexOf(';', pos).let { if (it == -1) limit else it }
-                val equalsSign = header.indexOf('=', pos).let { if (it == -1 || it > pairEnd) -1 else it }
-                if (equalsSign != -1) {
-                    val name = header.substring(pos, equalsSign).trim()
-                    val value = header.substring(equalsSign + 1, pairEnd).trim()
-                    try {
-                        Cookie.Builder()
-                            .name(name)
-                            .value(value)
-                            .domain(url.host)
-                            .build()
-                            .also { result.add(it) }
-                    } catch (e: Exception) {}
-                }
-                pos = pairEnd + 1
-            }
-            return result
-        }
     }
 }

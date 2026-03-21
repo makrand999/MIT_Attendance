@@ -1,213 +1,277 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:background="@color/background_dark">
 
-    <LinearLayout
+    <!-- Activity Background -->
+    <ImageView
+        android:id="@+id/ivBackground"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:src="@drawable/bg_detail"
+        tools:ignore="ContentDescription" />
+
+    <!-- Dim Overlay -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#B3000000" />
+
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:background="@android:color/transparent"
+        app:elevation="0dp">
 
-        <!-- Aim & Description Header with Single Copy Button -->
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
+            app:navigationIcon="@drawable/ic_back"
+            app:navigationIconTint="@color/white"
+            app:titleTextColor="@color/white" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- Aim & Description Section -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/white_10"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/white_20"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:letterSpacing="0.1"
+                            android:text="Aim &amp; Description"
+                            android:textAllCaps="true"
+                            android:textColor="@color/white_70"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <ImageButton
+                            android:id="@+id/btnCopyAll"
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:padding="6dp"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/ic_check_circle"
+                            app:tint="@color/white" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvAim"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="@color/white"
+                        android:textSize="16sp"
+                        tools:text="Design and develop a mobile application..." />
+
+                    <TextView
+                        android:id="@+id/tvDesc"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:alpha="0.7"
+                        android:textColor="@color/white"
+                        android:textSize="14sp"
+                        tools:text="Optional additional description details go here." />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Theory Section -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Theory"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <ProgressBar
+                    android:id="@+id/progressTheory"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginEnd="12dp"
+                    android:indeterminateTint="@color/white"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/btnPasteTheory"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Paste"
+                    android:textColor="@color/white_70"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnAiTheory"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="✦ AI"
+                    android:textColor="@color/white"
+                    app:strokeColor="@color/white_20"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <EditText
+                android:id="@+id/etTheory"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minLines="6"
+                android:inputType="textMultiLine|textCapSentences"
+                android:gravity="top|start"
+                android:hint="Write or generate theory…"
+                android:background="@drawable/bg_agent_input"
+                android:padding="16dp"
+                android:textSize="14sp"
+                android:textColor="@color/white"
+                android:textColorHint="@color/white_70"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Conclusion Section -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Conclusion"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <ProgressBar
+                    android:id="@+id/progressConclusion"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginEnd="12dp"
+                    android:indeterminateTint="@color/white"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/btnPasteConclusion"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Paste"
+                    android:textColor="@color/white_70"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnAiConclusion"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="✦ AI"
+                    android:textColor="@color/white"
+                    app:strokeColor="@color/white_20"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <EditText
+                android:id="@+id/etConclusion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minLines="4"
+                android:inputType="textMultiLine|textCapSentences"
+                android:gravity="top|start"
+                android:hint="Write or generate conclusion…"
+                android:background="@drawable/bg_agent_input"
+                android:padding="16dp"
+                android:textSize="14sp"
+                android:textColor="@color/white"
+                android:textColorHint="@color/white_70"
+                android:layout_marginBottom="32dp" />
 
             <TextView
-                android:layout_width="0dp"
+                android:id="@+id/tvSubmitStatus"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Aim &amp; Description"
-                android:textStyle="bold"
-                android:textSize="13sp"
-                android:textColor="?android:attr/textColorSecondary"
-                android:textAllCaps="true"
-                android:letterSpacing="0.1" />
-
-            <Button
-                android:id="@+id/btnCopyAll"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Copy Both"
-                android:textSize="12sp"
-                android:minHeight="0dp"
-                android:minWidth="0dp"
-                android:padding="8dp" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvAim"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="15sp"
-            android:layout_marginBottom="8dp" />
-
-        <!-- Description (hidden if empty) -->
-        <TextView
-            android:id="@+id/tvDesc"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:layout_marginBottom="16dp" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider"
-            android:layout_marginBottom="16dp" />
-
-        <!-- ── Theory Section ── -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="6dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Theory"
-                android:textStyle="bold"
-                android:textSize="15sp" />
+                android:gravity="center"
+                android:layout_marginBottom="16dp"
+                android:textSize="14sp"
+                android:visibility="gone" />
 
             <ProgressBar
-                android:id="@+id/progressTheory"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginEnd="8dp"
+                android:id="@+id/progressSubmit"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:layout_marginBottom="16dp"
+                android:indeterminateTint="@color/white"
                 android:visibility="gone" />
 
             <Button
-                android:id="@+id/btnPasteTheory"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Paste"
-                android:textSize="13sp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:layout_marginEnd="4dp" />
-
-            <Button
-                android:id="@+id/btnAiTheory"
+                android:id="@+id/btnSubmit"
                 style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="✦ AI"
-                android:textSize="13sp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp" />
-        </LinearLayout>
-
-        <EditText
-            android:id="@+id/etTheory"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minLines="6"
-            android:inputType="textMultiLine|textCapSentences"
-            android:gravity="top|start"
-            android:hint="Write or generate theory…"
-            android:background="@drawable/bg_edit_text"
-            android:padding="12dp"
-            android:textSize="14sp"
-            android:layout_marginBottom="20dp" />
-
-        <!-- ── Conclusion Section ── -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="6dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Conclusion"
+                android:padding="16dp"
+                android:text="Submit Practical"
+                android:textSize="16sp"
                 android:textStyle="bold"
-                android:textSize="15sp" />
+                android:textColor="@color/white"
+                app:backgroundTint="@color/white_10"
+                app:strokeColor="@color/white_20"
+                app:strokeWidth="1dp"
+                android:layout_marginBottom="24dp" />
 
-            <ProgressBar
-                android:id="@+id/progressConclusion"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginEnd="8dp"
-                android:visibility="gone" />
-
-            <Button
-                android:id="@+id/btnPasteConclusion"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Paste"
-                android:textSize="13sp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:layout_marginEnd="4dp" />
-
-            <Button
-                android:id="@+id/btnAiConclusion"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✦ AI"
-                android:textSize="13sp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp" />
         </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
-        <EditText
-            android:id="@+id/etConclusion"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minLines="4"
-            android:inputType="textMultiLine|textCapSentences"
-            android:gravity="top|start"
-            android:hint="Write or generate conclusion…"
-            android:background="@drawable/bg_edit_text"
-            android:padding="12dp"
-            android:textSize="14sp"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Submit status -->
-        <TextView
-            android:id="@+id/tvSubmitStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:gravity="center"
-            android:layout_marginBottom="12dp"
-            android:visibility="gone" />
-
-        <!-- Submit progress -->
-        <ProgressBar
-            android:id="@+id/progressSubmit"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="12dp"
-            android:visibility="gone" />
-
-        <!-- Submit button -->
-        <Button
-            android:id="@+id/btnSubmit"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Submit Practical"
-            android:textSize="15sp"
-            android:padding="14dp"
-            android:layout_marginBottom="16dp" />
-
-    </LinearLayout>
-</ScrollView>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

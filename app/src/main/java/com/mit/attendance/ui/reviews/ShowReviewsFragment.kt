@@ -1,6 +1,6 @@
 package com.mit.attendance.ui.reviews
 
-import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -37,6 +37,8 @@ class ShowReviewsFragment : Fragment() {
         binding.recyclerView.adapter = adapter
 
         binding.swipeRefresh.setOnRefreshListener { viewModel.refresh() }
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(Color.parseColor("#33FFFFFF"))
+        binding.swipeRefresh.setColorSchemeColors(Color.WHITE)
 
         viewModel.reviews.observe(viewLifecycleOwner) {
             adapter.submitList(it)
@@ -67,20 +69,21 @@ class ShowReviewsFragment : Fragment() {
 
         class VH(private val binding: ItemReviewBinding) : RecyclerView.ViewHolder(binding.root) {
             fun bind(review: ReviewEntity) {
-                // Gender text removed as requested, using background color to indicate gender
                 binding.tvGender.visibility = View.GONE
-
                 binding.tvComment.text = review.comment
                 binding.ratingBar.rating = review.rating
                 binding.tvTimestamp.text = review.timestamp
 
                 val context = binding.root.context
                 val isFemale = review.gender.equals("Female", ignoreCase = true)
+                val cardView = binding.root as com.google.android.material.card.MaterialCardView
                 
                 if (isFemale) {
-                    binding.layoutReview.setBackgroundColor(ContextCompat.getColor(context, R.color.review_female_bg))
+                    cardView.strokeColor = ContextCompat.getColor(context, R.color.review_female_stroke)
+                    cardView.strokeWidth = (2 * context.resources.displayMetrics.density).toInt()
                 } else {
-                    binding.layoutReview.setBackgroundColor(ContextCompat.getColor(context, R.color.review_normal_bg))
+                    cardView.strokeColor = ContextCompat.getColor(context, R.color.glass_card_stroke)
+                    cardView.strokeWidth = (1 * context.resources.displayMetrics.density).toInt()
                 }
             }
         }

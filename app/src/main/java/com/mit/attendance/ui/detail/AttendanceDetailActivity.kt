@@ -5,6 +5,7 @@ import android.view.*
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.*
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
@@ -17,8 +18,8 @@ import com.mit.attendance.databinding.ActivityAttendanceDetailBinding
 import com.mit.attendance.databinding.ItemAttendanceBinding
 import com.mit.attendance.model.AttendanceUiModel
 import com.mit.attendance.model.SingleLiveEvent
-import com.mit.attendance.model.SyncResult
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -29,12 +30,11 @@ class DetailViewModel(
 ) : ViewModel() {
 
     val attendance = repo.getAttendanceFlow(subjectId)
+    val bgDetailUri = repo.prefs.bgDetailUri
 
     private val _isLoading = MutableLiveData(false)
     val isLoading: LiveData<Boolean> = _isLoading
 
-    // FIX: was MutableLiveData — snackbar replayed on every rotation.
-    // SingleLiveEvent fires once and is consumed.
     private val _syncMessage = SingleLiveEvent<String>()
     val syncMessage: LiveData<String> = _syncMessage
 
@@ -45,14 +45,8 @@ class DetailViewModel(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val result = repo.syncAttendanceDetail(subjectId)
-                _syncMessage.call(when (result) {
-                    is SyncResult.Success      -> "✅ ${result.newCount} new record(s) fetched"
-                    is SyncResult.NoChange     -> "✓ Already up to date"
-                    is SyncResult.NetworkError -> "⚠️ Network error — showing cached data"
-                    is SyncResult.SessionError -> "⚠️ Session expired — please log in again"
-                    is SyncResult.ServerOffline -> "🔴 Server is offline (521) — showing cached data"
-                })
+                repo.syncAttendanceDetail(subjectId)
+                // Removed _syncMessage.call to stop "Up to date" etc popups
             } catch (e: Exception) {
                 _syncMessage.call("⚠️ Unexpected error: ${e.message}")
             } finally {
@@ -94,8 +88,6 @@ class AttendanceDetailActivity : AppCompatActivity() {
         binding = ActivityAttendanceDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // FIX: guard against missing extra — finish early instead of silently
-        // running all DB queries with subjectId = "" and showing an empty screen.
         val subjectId = intent.getStringExtra(EXTRA_SUBJECT_ID)
         if (subjectId.isNullOrBlank()) {
             finish()
@@ -114,8 +106,21 @@ class AttendanceDetailActivity : AppCompatActivity() {
         observeData()
 
         binding.swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent)
-        binding.swipeRefresh.setOnRefreshListener { viewModel.fetch() }
-       // binding.fabRefresh.setOnClickListener { viewModel.fetch() }
+        binding.swipeRefresh.isEnabled = true // Keep pull-to-refresh enabled
+        binding.swipeRefresh.setOnRefreshListener { 
+            viewModel.fetch()
+            binding.swipeRefresh.isRefreshing = false // Stop pull animation immediately
+        }
+
+        lifecycleScope.launch {
+            viewModel.bgDetailUri.collectLatest { uri ->
+                if (uri != null) {
+                    binding.ivBackground.setImageURI(uri.toUri())
+                } else {
+                    binding.ivBackground.setImageResource(R.drawable.bg_detail)
+                }
+            }
+        }
     }
 
     override fun onStop() {
@@ -140,25 +145,42 @@ class AttendanceDetailActivity : AppCompatActivity() {
                 adapter.submitList(records)
                 binding.tvEmpty.visibility = if (records.isEmpty()) View.VISIBLE else View.GONE
 
-                val total = records.size
-                val present = records.count { it.status == "P" }
-                val pct = if (total > 0) (present * 100f / total) else 0f
-                binding.tvSummary.text =
-                    "Present: $present | Absent: ${total - present} | ${pct.toInt()}%"
+                if (records.isNotEmpty()) {
+                    val total = records.size
+                    val present = records.count { it.status == "P" }
+                    val percentage = (present * 100f / total)
+                    
+                    binding.tvStatsSummary.text = "$present/$total"
+                    
+                    if (percentage < 75f) {
+                        val needed = Math.ceil((0.75 * total - present) / 0.25).toInt()
+                        binding.tvNeededSummary.text = if (needed > 0) "-$needed" else "0"
+                        binding.tvNeededSummary.setTextColor(ContextCompat.getColor(this@AttendanceDetailActivity, R.color.red_light))
+                    } else {
+                        val canSkip = Math.floor((present - 0.75 * total) / 0.75).toInt()
+                        binding.tvNeededSummary.text = if (canSkip > 0) "+$canSkip" else "0"
+                        binding.tvNeededSummary.setTextColor(ContextCompat.getColor(this@AttendanceDetailActivity, R.color.green_light))
+                    }
+                } else {
+                    binding.tvStatsSummary.text = "0/0"
+                    binding.tvNeededSummary.text = "0"
+                }
             }
         }
 
         viewModel.isLoading.observe(this) { loading ->
-            // progress_bar only shows on very first load when list is empty
-            binding.progressBar.visibility =
-                if (loading && adapter.itemCount == 0) View.VISIBLE else View.GONE
-            // swipe refresh spinner stops when done
-            binding.swipeRefresh.isRefreshing = loading
+            // Move loading indicator to the toolbar ProgressBar
+            binding.toolbarProgressBar.visibility = if (loading) View.VISIBLE else View.GONE
+            // Ensure central progress bar and swipe refresh animation stay hidden
+            binding.progressBar.visibility = View.GONE
+            binding.swipeRefresh.isRefreshing = false
         }
 
-        // FIX: SingleLiveEvent — no null check needed, fires once only
         viewModel.syncMessage.observe(this) { msg ->
-            Snackbar.make(binding.root, msg, Snackbar.LENGTH_SHORT).show()
+            // Only show snackbar for actual errors
+            if (msg.startsWith("⚠️")) {
+                Snackbar.make(binding.root, msg, Snackbar.LENGTH_SHORT).show()
+            }
         }
     }
 }
@@ -167,8 +189,6 @@ class AttendanceDetailActivity : AppCompatActivity() {
 
 class AttendanceAdapter : RecyclerView.Adapter<AttendanceAdapter.VH>() {
 
-    // FIX: AsyncListDiffer replaces the manual mutable list + calculateDiff pattern.
-    // Diff runs on a background thread; no race condition between submitList calls.
     private val differ = AsyncListDiffer(this, object : DiffUtil.ItemCallback<AttendanceUiModel>() {
         override fun areItemsTheSame(o: AttendanceUiModel, n: AttendanceUiModel) =
             o.date == n.date && o.startTime == n.startTime
@@ -202,13 +222,9 @@ class AttendanceAdapter : RecyclerView.Adapter<AttendanceAdapter.VH>() {
             binding.tvStatus.setTextColor(statusColor)
             binding.statusIndicator.setBackgroundColor(statusColor)
 
-            if (record.isNew) {
-                binding.root.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.new_entry_bg))
-                binding.badgeNew.visibility = View.VISIBLE
-            } else {
-                binding.root.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.card_background))
-                binding.badgeNew.visibility = View.GONE
-            }
+            // Force transparency
+            binding.root.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+            binding.badgeNew.visibility = if (record.isNew) View.VISIBLE else View.GONE
         }
     }
 }

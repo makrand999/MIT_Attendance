@@ -16,17 +16,17 @@
 
     <!-- Backgrounds -->
     <color name="background">#121212</color>
-    <color name="card_background">#1E1E1E</color>
+    <color name="card_background">#242424</color>
     <color name="new_entry_bg">#1B2E1D</color>
     <color name="surface">#121212</color>
 
     <!-- Text -->
-    <color name="text_primary">#E1E1E1</color>
-    <color name="text_secondary">#B0B0B0</color>
-    <color name="text_hint">#757575</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#BDBDBD</color>
+    <color name="text_hint">#9E9E9E</color>
 
     <!-- Other -->
-    <color name="divider">#2C2C2C</color>
+    <color name="divider">#333333</color>
     <color name="badge_new">#2E7D32</color>
     <color name="toolbar_text">#FFFFFF</color>
 

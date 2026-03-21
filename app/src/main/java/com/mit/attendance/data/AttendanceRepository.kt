@@ -9,6 +9,8 @@ import com.mit.attendance.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.text.SimpleDateFormat
+import java.util.*
 
 class AttendanceRepository(private val context: android.content.Context) {
 
@@ -136,15 +138,15 @@ class AttendanceRepository(private val context: android.content.Context) {
         val existingMap = attendanceDao.getAttendanceForSubjectList(subjectName)
             .associateBy { Triple(it.subjectName, it.date, it.startTime) }
 
-        val incoming = apiRecords.mapNotNull { r ->
-            val date = r.Date ?: return@mapNotNull null
+        val incoming = apiRecords.mapIndexedNotNull { index, r ->
+            val date = r.Date ?: return@mapIndexedNotNull null
             val stime = r.stime?.trim() ?: ""
             val etime = r.etime?.trim() ?: ""
             
             val status = when (r.presenty?.trim()?.lowercase()) {
                 "p", "present", "1" -> "P"
                 "a", "absent", "0" -> "A"
-                else -> return@mapNotNull null // Ignore records that are neither Present nor Absent
+                else -> return@mapIndexedNotNull null // Ignore records that are neither Present nor Absent
             }
 
             val key = Triple(subjectName, date, stime)
@@ -167,7 +169,8 @@ class AttendanceRepository(private val context: android.content.Context) {
                 startTime = stime,
                 endTime = etime,
                 isNew = isNew,
-                seenAt = if (existing != null && existing.status == status) existing.seenAt else null
+                seenAt = if (existing != null && existing.status == status) existing.seenAt else null,
+                serverOrder = index
             )
         }
 
@@ -222,6 +225,10 @@ class AttendanceRepository(private val context: android.content.Context) {
         val creds = prefs.getCredentialsSnapshot()
         if (creds.email.isEmpty()) return@withContext 0
 
+        // Take snapshot of existing subjects to distinguish between fresh login/new subjects 
+        // vs existing subjects getting new updates.
+        val existingSubjectNames = subjectDao.getAllSubjectsList().map { it.subjectName }.toSet()
+
         // Auto-fix duplicates before normal sync
         autoFixDuplicates()
 
@@ -239,7 +246,17 @@ class AttendanceRepository(private val context: android.content.Context) {
         val subjects = subjectDao.getAllSubjectsList()
         val results = coroutineScope {
             subjects.map { subject ->
-                async { syncAttendanceDetail(subject.subjectName) }
+                async { 
+                    val res = syncAttendanceDetail(subject.subjectName)
+                    
+                    // Only mark as seen if it's a completely new subject (or first sync after login).
+                    // This preserves the 'new' highlight for existing subjects until they are actually viewed.
+                    if (!existingSubjectNames.contains(subject.subjectName)) {
+                        markAttendanceAsSeen(subject.subjectName)
+                    }
+
+                    res
+                }
             }.awaitAll()
         }
         return@withContext results.sumOf { if (it is SyncResult.Success) it.newCount else 0 }

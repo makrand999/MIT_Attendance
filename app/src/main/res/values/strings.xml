@@ -3,7 +3,7 @@
     <string name="app_name">MIT Attendance</string>
     <string name="login_title">MIT ERP</string>
     <string name="login_subtitle">Student Attendance Tracker</string>
-    <string name="hint_email">Email ID (e.g. name@mit.asia)</string>
+    <string name="hint_email">name@mit.asia</string>
     <string name="hint_password">Password</string>
     <string name="hint_semester">Select Semester</string>
     <string name="btn_login">Sign In</string>
@@ -16,4 +16,20 @@
     <string name="menu_logout">Sign Out</string>
     <string name="menu_share">Share App</string>
     <string name="msg_link_copied">App link copied to clipboard</string>
+
+    <string name="shortcut_timetable_short">Timetable</string>
+    <string name="shortcut_timetable_long">View Timetable</string>
+    <string name="shortcut_erp_short">ERP</string>
+    <string name="shortcut_erp_long">Open ERP Portal</string>
+    <string name="label_new">NEW</string>
+
+    <!-- Reviews -->
+    <string name="title_reviews">Reviews</string>
+    <string name="tab_show_reviews">Show Reviews</string>
+    <string name="tab_send_review">Send Review</string>
+    <string name="hint_review_email">Email (name.surname@mit.asia)</string>
+    <string name="label_rating">Rating</string>
+    <string name="hint_write_review">Write your review…</string>
+    <string name="btn_send_review">Send Review</string>
+    <string name="msg_anonymous_review">Your review will be sent anonymously.</string>
 </resources>

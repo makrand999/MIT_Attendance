@@ -4,12 +4,47 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Faint Black Circle Background (Dark Grey) -->
     <path
-        android:fillColor="#1565C0"
-        android:pathData="M0,0h108v108h-108z"/>
+        android:fillColor="#212121"
+        android:pathData="M54,54m-40,0a40,40 0,1,1 80,0a40,40 0,1,1 -80,0" />
+
+    <!-- "Gu" Text in Red with more spacing -->
+    <!-- G (Shifted left to avoid sticking) -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,35 L78,35 L78,75 L30,75 Z M35,40 L35,70 L73,70 L73,40 Z M40,50 L68,50 M40,58 L68,58 M40,65 L55,65"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3" />
+        android:fillColor="#FF0000"
+        android:pathData="M40,40
+                  C30,40 25,45 25,54
+                  C25,63 30,68 40,68
+                  C45,68 48,66 50,62
+                  L50,54
+                  L40,54
+                  L40,50
+                  L55,50
+                  L55,65
+                  C52,68 47,72 40,72
+                  C27,72 20,65 20,54
+                  C20,43 27,36 40,36
+                  C47,36 52,39 55,43
+                  L51,47
+                  C49,44 45,40 40,40 Z" />
+
+    <!-- u (Shifted right to avoid sticking) -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M70,48
+                  L70,64
+                  C70,68 72,70 75,70
+                  C78,70 80,68 80,64
+                  L80,48
+                  L85,48
+                  L85,72
+                  L80,72
+                  L80,68
+                  C78,71 75,72 72,72
+                  C67,72 65,69 65,64
+                  L65,48
+                  L70,48 Z" />
+
 </vector>

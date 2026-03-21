@@ -1,19 +1,24 @@
 package com.mit.attendance.ui.login
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.WindowManager
 import android.widget.ArrayAdapter
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.*
 import com.mit.attendance.R
 import com.mit.attendance.data.AttendanceRepository
 import com.mit.attendance.databinding.ActivityLoginBinding
 import com.mit.attendance.model.LoginResult
 import com.mit.attendance.service.AttendanceSyncWorker
+import com.mit.attendance.ui.subjects.ErpWebViewActivity
 import com.mit.attendance.ui.subjects.SubjectsActivity
+import com.mit.attendance.ui.timetable.TimetableActivity
 import kotlinx.coroutines.launch
 
 // ── Splash Activity ───────────────────────────────────────────────────────────
@@ -26,10 +31,19 @@ class SplashActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val repo = AttendanceRepository(applicationContext)
             val isLoggedIn = repo.prefs.isLoggedInSnapshot()
-            startActivity(
-                if (isLoggedIn) Intent(this@SplashActivity, SubjectsActivity::class.java)
-                else Intent(this@SplashActivity, LoginActivity::class.java)
-            )
+            
+            val intent = if (isLoggedIn) {
+                // Handle App Shortcuts
+                when (intent.getStringExtra("shortcut")) {
+                    "timetable" -> Intent(this@SplashActivity, TimetableActivity::class.java)
+                    "erp" -> Intent(this@SplashActivity, ErpWebViewActivity::class.java)
+                    else -> Intent(this@SplashActivity, SubjectsActivity::class.java)
+                }
+            } else {
+                Intent(this@SplashActivity, LoginActivity::class.java)
+            }
+            
+            startActivity(intent)
             finish()
         }
     }
@@ -48,8 +62,6 @@ class LoginViewModel(private val repo: AttendanceRepository) : ViewModel() {
                 _loginState.value = LoginUiState.Error("Please fill in all fields")
                 return
             }
-            // FIX: semId null means the spinner text was unrecognisable — surface error
-            // instead of silently defaulting to semester 1.
             semId == null -> {
                 _loginState.value = LoginUiState.Error("Please select a valid semester")
                 return
@@ -91,6 +103,16 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Edge-to-edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.apply {
+            clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+            addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            statusBarColor = Color.TRANSPARENT
+            navigationBarColor = Color.TRANSPARENT
+        }
+
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -147,8 +169,6 @@ class LoginActivity : AppCompatActivity() {
             val email = binding.etEmail.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val semText = binding.spinnerSemester.text.toString()
-            // FIX: returns null if text doesn't contain a digit (e.g. cleared field),
-            // which the ViewModel now handles with a proper error message.
             val semId = semText.filter { it.isDigit() }.toIntOrNull()
             viewModel.login(email, password, semId)
         }

@@ -79,7 +79,7 @@ class PracticalRepository(
                 }
                 Result.success(cached)
             } else {
-                networkResult.map { emptyList() }
+                networkResult.map { emptyList<PracticalSubject>() }
             }
         }
     }
@@ -97,6 +97,7 @@ class PracticalRepository(
                 it.isSubmitted = false
                 toSave.add(it)
             }
+            // Use Transaction or handle carefully to avoid flickering
             practicalDao.deletePracticalsForSubject(subjectId)
             practicalDao.upsertPracticals(toSave)
         }

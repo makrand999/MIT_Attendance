@@ -1,19 +1,26 @@
 package com.mit.attendance.ui.practical
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.addTextChangedListener
 import com.mit.attendance.R
 import com.mit.attendance.data.prefs.UserPreferences
+import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class SubmitPracticalActivity : AppCompatActivity() {
 
@@ -39,11 +46,40 @@ class SubmitPracticalActivity : AppCompatActivity() {
 
     // Extras
     private var subjectId       = 0
+    private var subjectName     = ""
     private var practicalId     = 0
     private var practicalNumber = 0
     private var practicalAim    = ""
     private var practicalDesc   = ""
     private var isSubmitted     = false
+
+    private var saveJob: Job? = null
+
+    private val chatGptLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val type = result.data?.getStringExtra(ChatGPTWebViewActivity.EXTRA_FIELD_TYPE)
+            val returnedText = result.data?.getStringExtra(ChatGPTWebViewActivity.EXTRA_PASTED_TEXT)
+            
+            when (type) {
+                ChatGPTWebViewActivity.FIELD_THEORY -> {
+                    if (returnedText != null) {
+                        etTheory.setText(returnedText)
+                        Toast.makeText(this, "Pasted into Theory", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pasteToEditText(etTheory, "Theory")
+                    }
+                }
+                ChatGPTWebViewActivity.FIELD_CONCLUSION -> {
+                    if (returnedText != null) {
+                        etConclusion.setText(returnedText)
+                        Toast.makeText(this, "Pasted into Conclusion", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pasteToEditText(etConclusion, "Conclusion")
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +87,7 @@ class SubmitPracticalActivity : AppCompatActivity() {
 
         // Read extras
         subjectId       = intent.getIntExtra(PracticalActivity.EXTRA_SUBJECT_ID,       0)
+        subjectName     = intent.getStringExtra(PracticalActivity.EXTRA_SUBJECT_NAME) ?: ""
         practicalId     = intent.getIntExtra("practical_id",     0)
         practicalNumber = intent.getIntExtra("practical_number", 0)
         practicalAim    = intent.getStringExtra("practical_title") ?: ""
@@ -95,11 +132,11 @@ class SubmitPracticalActivity : AppCompatActivity() {
 
         // ── Clipboard Buttons ─────────────────────────────────────────────
         btnCopyAll.setOnClickListener {
-            val combinedText = if (practicalDesc.isNotBlank()) {
-                "Aim: $practicalAim\n\nDescription: $practicalDesc"
-            } else {
-                "Aim: $practicalAim"
-            }
+            val combinedText = StringBuilder().apply {
+                if (subjectName.isNotBlank()) append("Subject: $subjectName\n")
+                append("Aim: $practicalAim")
+                if (practicalDesc.isNotBlank()) append("\n\nDescription: $practicalDesc")
+            }.toString()
             copyToClipboard("Practical Details", combinedText)
         }
         
@@ -108,82 +145,34 @@ class SubmitPracticalActivity : AppCompatActivity() {
 
         // ── AI: Theory ────────────────────────────────────────────────────
         btnAiTheory.setOnClickListener {
-            if (etTheory.text.isNotBlank()) {
-                AlertDialog.Builder(this)
-                    .setTitle("Replace Theory?")
-                    .setMessage("AI-generated content will replace your current theory. Continue?")
-                    .setPositiveButton("Replace") { _, _ -> viewModel.generateTheory(practicalAim, practicalDesc.ifBlank { null }) }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            } else {
-                viewModel.generateTheory(practicalAim, practicalDesc.ifBlank { null })
-            }
-        }
-
-        viewModel.theoryAiState.observe(this) { state ->
-            when (state) {
-                is UiState.Loading -> {
-                    progressTheory.visibility = View.VISIBLE
-                    btnAiTheory.isEnabled = false
-                }
-                is UiState.Success -> {
-                    progressTheory.visibility = View.GONE
-                    btnAiTheory.isEnabled = true
-                    etTheory.setText(state.data)
-                    etTheory.setSelection(0) // scroll to top
-                    viewModel.resetTheoryAiState()
-                }
-                is UiState.Error -> {
-                    progressTheory.visibility = View.GONE
-                    btnAiTheory.isEnabled = true
-                    Toast.makeText(this, "AI error: ${state.message}", Toast.LENGTH_LONG).show()
-                    viewModel.resetTheoryAiState()
-                }
-                else -> {
-                    progressTheory.visibility = View.GONE
-                    btnAiTheory.isEnabled = true
-                }
-            }
+            val prompt = """
+                Write a detailed theory for the following practical aim: $practicalAim.
+                ${if(subjectName.isNotBlank()) "Subject/Lab: $subjectName" else ""}
+                ${if(practicalDesc.isNotBlank()) "Context: $practicalDesc" else ""}
+                
+                IMPORTANT INSTRUCTIONS:
+                1. Provide ONLY the theory content. 
+                2. Do NOT include any introductory phrases (like "Sure, here is...") or concluding questions.
+                3. DO NOT use any markdown formatting like bold (**words**) or italics. Use plain text only.
+                4. Maintain a formal academic tone.
+            """.trimIndent()
+            openChatGPT(prompt, ChatGPTWebViewActivity.FIELD_THEORY)
         }
 
         // ── AI: Conclusion ────────────────────────────────────────────────
         btnAiConclusion.setOnClickListener {
-            if (etConclusion.text.isNotBlank()) {
-                AlertDialog.Builder(this)
-                    .setTitle("Replace Conclusion?")
-                    .setMessage("AI-generated content will replace your current conclusion. Continue?")
-                    .setPositiveButton("Replace") { _, _ -> viewModel.generateConclusion(practicalAim, practicalDesc.ifBlank { null }) }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            } else {
-                viewModel.generateConclusion(practicalAim, practicalDesc.ifBlank { null })
-            }
-        }
-
-        viewModel.conclusionAiState.observe(this) { state ->
-            when (state) {
-                is UiState.Loading -> {
-                    progressConclusion.visibility = View.VISIBLE
-                    btnAiConclusion.isEnabled = false
-                }
-                is UiState.Success -> {
-                    progressConclusion.visibility = View.GONE
-                    btnAiConclusion.isEnabled = true
-                    etConclusion.setText(state.data)
-                    etConclusion.setSelection(0)
-                    viewModel.resetConclusionAiState()
-                }
-                is UiState.Error -> {
-                    progressConclusion.visibility = View.GONE
-                    btnAiConclusion.isEnabled = true
-                    Toast.makeText(this, "AI error: ${state.message}", Toast.LENGTH_LONG).show()
-                    viewModel.resetConclusionAiState()
-                }
-                else -> {
-                    progressConclusion.visibility = View.GONE
-                    btnAiConclusion.isEnabled = true
-                }
-            }
+            val prompt = """
+                Write a concise conclusion for the following practical aim: $practicalAim.
+                ${if(subjectName.isNotBlank()) "Subject/Lab: $subjectName" else ""}
+                ${if(practicalDesc.isNotBlank()) "Context: $practicalDesc" else ""}
+                
+                IMPORTANT INSTRUCTIONS:
+                1. Provide ONLY the conclusion text.
+                2. Do NOT include any introductory phrases or follow-up questions.
+                3. DO NOT use any markdown formatting like bold (**words**) or italics. Use plain text only.
+                4. Keep it professional and direct.
+            """.trimIndent()
+            openChatGPT(prompt, ChatGPTWebViewActivity.FIELD_CONCLUSION)
         }
 
         // ── Submit ────────────────────────────────────────────────────────
@@ -236,7 +225,7 @@ class SubmitPracticalActivity : AppCompatActivity() {
 
         // ── Draft Handling ────────────────────────────────────────────────
         
-        // Auto-save on change
+        // Auto-save on change (with debouncing)
         etTheory.addTextChangedListener { saveCurrentDraft() }
         etConclusion.addTextChangedListener { saveCurrentDraft() }
 
@@ -261,11 +250,23 @@ class SubmitPracticalActivity : AppCompatActivity() {
         }
     }
 
+    private fun openChatGPT(prompt: String, fieldType: String) {
+        val intent = Intent(this, ChatGPTWebViewActivity::class.java).apply {
+            putExtra(ChatGPTWebViewActivity.EXTRA_PROMPT, prompt)
+            putExtra(ChatGPTWebViewActivity.EXTRA_FIELD_TYPE, fieldType)
+        }
+        chatGptLauncher.launch(intent)
+    }
+
     private fun saveCurrentDraft() {
-        val theory = etTheory.text.toString()
-        val conclusion = etConclusion.text.toString()
-        if (theory.isNotBlank() || conclusion.isNotBlank()) {
-            viewModel.saveDraft(practicalId, theory, conclusion)
+        saveJob?.cancel()
+        saveJob = lifecycleScope.launch {
+            delay(1000) // Debounce: Wait for 1 second of inactivity
+            val theory = etTheory.text.toString()
+            val conclusion = etConclusion.text.toString()
+            if (theory.isNotBlank() || conclusion.isNotBlank()) {
+                viewModel.saveDraft(practicalId, theory, conclusion)
+            }
         }
     }
 

@@ -13,7 +13,7 @@ android {
         applicationId "com.mit.attendance"
         minSdk 26
         targetSdk 34
-        versionCode 7
+        versionCode 9
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -52,6 +52,9 @@ dependencies {
     implementation 'androidx.viewpager2:viewpager2:1.0.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
     
+    // Security
+    implementation 'androidx.security:security-crypto:1.1.0'
+
     // MQTT (Paho Core - Pure Java, no service needed)
     implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
 
@@ -78,4 +81,7 @@ dependencies {
     // Splash Screen
     implementation 'androidx.core:core-splashscreen:1.0.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3' // for @Serializable + Json
+
+    // QR Code Generation
+    implementation 'com.google.zxing:core:3.5.4'
 }

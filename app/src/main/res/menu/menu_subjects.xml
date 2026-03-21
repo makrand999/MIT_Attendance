@@ -3,21 +3,33 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_agent"
+        android:title="Agent"
+        android:orderInCategory="5"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_timetable"
+        android:title="Timetable"
+        android:orderInCategory="10"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_chat"
         android:title="Anonymous Chat"
-        android:orderInCategory="40"
+        android:orderInCategory="20"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_erp"
         android:title="ERP"
-        android:orderInCategory="45"
+        android:orderInCategory="30"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_exam_cell"
         android:title="Exam Cell "
-        android:orderInCategory="46"
+        android:orderInCategory="40"
         app:showAsAction="never" />
 
     <item
@@ -29,27 +41,49 @@
     <item
         android:id="@+id/action_reviews"
         android:title="Reviews"
-        android:orderInCategory="55"
+        android:orderInCategory="60"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_certifications"
+        android:title="Certifications"
+        android:orderInCategory="70"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_notifications"
         android:title="Notifications: ON"
+        android:orderInCategory="80"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_share"
         android:title="@string/menu_share"
+        android:orderInCategory="90"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_customize"
+        android:title="Customize"
+        android:orderInCategory="92"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_lock"
+        android:title="Lock"
+        android:orderInCategory="95"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_update"
         android:title="@string/menu_update"
+        android:orderInCategory="100"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_logout"
         android:title="@string/menu_logout"
+        android:orderInCategory="110"
         app:showAsAction="never" />
 
 </menu>

@@ -54,7 +54,8 @@ data class AttendanceEntity(
     val startTime: String,
     val endTime: String,
     val isNew: Boolean = false,
-    val seenAt: Long? = null
+    val seenAt: Long? = null,
+    val serverOrder: Int = 0 // Used to reverse the server's ascending order
 )
 
 // ── UI models ─────────────────────────────────────────────────────────────────

@@ -3,7 +3,6 @@ package com.mit.attendance.ui.subjects
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Bundle
-import android.view.MenuItem
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -24,9 +23,9 @@ class ErpWebViewActivity : AppCompatActivity() {
         binding = ActivityErpWebviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "ERP"
+        binding.btnBack.setOnClickListener {
+            finish()
+        }
 
         val url = "https://erp.mit.asia/studentCourseFileNew.htm?shwA=%2700A%27"
         val sessionId = HttpClientHolder.getSessionId()
@@ -77,13 +76,5 @@ class ErpWebViewActivity : AppCompatActivity() {
                 }
             }
         })
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            finish()
-            return true
-        }
-        return super.onOptionsItemSelected(item)
     }
 }

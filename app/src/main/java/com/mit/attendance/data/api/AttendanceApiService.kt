@@ -47,20 +47,7 @@ object HttpClientHolder {
         val cleanLogging = Interceptor { chain ->
             val request = chain.request()
 
-            Log.d("OkHttp", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            Log.d("OkHttp", "➤ REQUEST:  ${request.method} ${request.url}")
-            request.headers.forEach { (name, value) ->
-                Log.d("OkHttp", "   Header: $name = $value")
-            }
-
             val response = chain.proceed(request)
-
-            Log.d("OkHttp", "◀ RESPONSE BY SERVER: ${response.code} ${response.message}")
-            Log.d("OkHttp", "   URL: ${response.request.url}")
-            response.headers.forEach { (name, value) ->
-                Log.d("OkHttp", "   Header: $name = $value")
-            }
-            Log.d("OkHttp", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
             response // Never consume the body here — callers still need it
         }
@@ -74,8 +61,6 @@ object HttpClientHolder {
             .followSslRedirects(false)
             .addNetworkInterceptor(cleanLogging)
             .build()
-
-        Log.d(TAG, "Initialised. Stored JSESSIONID: ${persistentJar.getSessionId()}")
     }
 
     fun clearSession() {
@@ -119,7 +104,6 @@ class PersistentCookieJar(context: Context) : CookieJar {
                 .path("/")
                 .build()
             store.getOrPut(savedDomain) { mutableMapOf() }["JSESSIONID"] = cookie
-            Log.d("CookieJar", "Restored JSESSIONID from disk: $savedId")
         }
     }
 
@@ -133,7 +117,6 @@ class PersistentCookieJar(context: Context) : CookieJar {
                     .putString("jsessionid_value", cookie.value)
                     .putString("jsessionid_domain", host)
                     .apply()
-                Log.d("CookieJar", "Persisted JSESSIONID: ${cookie.value} for $host")
             }
         }
     }
@@ -146,7 +129,6 @@ class PersistentCookieJar(context: Context) : CookieJar {
     fun clear() {
         store.clear()
         prefs.edit().clear().apply()
-        Log.d("CookieJar", "Session cleared")
     }
 }
 
@@ -174,13 +156,10 @@ class AttendanceApiService {
                     SessionState.Offline -> LoginResult.ServerDown
                 }
             } catch (e: SocketTimeoutException) {
-                Log.e(TAG, "Timeout during login", e)
                 LoginResult.ServerDown
             } catch (e: IOException) {
-                Log.e(TAG, "IO error during login", e)
                 LoginResult.ServerDown
             } catch (e: Exception) {
-                Log.e(TAG, "Error during login", e)
                 LoginResult.Error(e.message ?: "Unknown error")
             }
         }
@@ -188,7 +167,6 @@ class AttendanceApiService {
 
     private fun doLogin(email: String, password: String) {
         HttpClientHolder.clearSession()
-        Log.d(TAG, "doLogin: cleared old session, logging in as $email")
 
         val body = FormBody.Builder()
             .add("j_username", email)
@@ -209,7 +187,6 @@ class AttendanceApiService {
         val loginCode = loginResp.code
         val location  = loginResp.header("Location") ?: ""
         loginResp.close()
-        Log.d(TAG, "POST j_spring_security_check → $loginCode  Location: $location")
 
         if (loginCode == 302 && location.isNotEmpty()) {
             val redirectUrl = if (location.startsWith("http")) location else "$BASE_URL$location"
@@ -220,32 +197,18 @@ class AttendanceApiService {
                     .header("User-Agent", "Mozilla/5.0")
                     .header("Referer", "$BASE_URL/j_spring_security_check")
                     .build()
-            ).execute().use { resp ->
-                Log.d(TAG, "GET $redirectUrl → ${resp.code}")
-            }
+            ).execute().use { resp -> }
         }
-
-        Log.d(TAG, "doLogin complete. JSESSIONID: ${HttpClientHolder.getSessionId()}")
     }
 
     // ── Session check ─────────────────────────────────────────────────────────
 
-    /**
-     * Hits the subjects endpoint and maps the outcome to a [SessionState]:
-     *
-     *   non-empty JSON array  → Alive   (session valid)
-     *   empty [] / HTML       → Dead    (session gone, re-login needed)
-     *   code 521 / timeout    → Offline (server down, do not re-login)
-     *
-     * Blocking — must always be called from Dispatchers.IO.
-     */
     private fun checkSession(semId: Int): SessionState {
         return try {
             val resp = client.newCall(subjectRequest(semId)).execute()
             val code = resp.code
             val body = resp.body?.string() ?: ""
             resp.close()
-            Log.d(TAG, "checkSession → code=$code  body=${body.take(120)}")
 
             when {
                 isServerDown(code)    -> SessionState.Offline
@@ -256,32 +219,16 @@ class AttendanceApiService {
                 else -> SessionState.Dead
             }
         } catch (e: SocketTimeoutException) {
-            Log.w(TAG, "checkSession: timeout — server likely down")
             SessionState.Offline
         } catch (e: IOException) {
-            Log.w(TAG, "checkSession: IO error — server likely down")
             SessionState.Offline
         } catch (e: Exception) {
-            Log.e(TAG, "checkSession: unexpected error", e)
             SessionState.Dead
         }
     }
 
     // ── Session gate (single re-auth point) ───────────────────────────────────
 
-    /**
-     * Every fetch call passes through here before touching the network.
-     *
-     * Flow:
-     *   1. forceCheck=false AND session within TTL → skip network check (fast path)
-     *   2. Hit endpoint to confirm state
-     *      • Alive   → proceed
-     *      • Offline → return failure, do NOT attempt login
-     *      • Dead    → doLogin once, recheck, then proceed or fail
-     *
-     * forceCheck=true is used when a fetch returns [] despite a TTL-trusted session,
-     * to distinguish "dead session returning []" from "genuinely no records".
-     */
     private suspend fun ensureValidSession(
         email: String,
         password: String,
@@ -290,20 +237,16 @@ class AttendanceApiService {
     ): SessionState {
         // Fast path — skip network check if session was recently active
         if (!forceCheck && HttpClientHolder.isSessionLikelyAlive()) {
-            Log.d(TAG, "ensureValidSession: within TTL, reusing session")
             return SessionState.Alive
         }
 
-        Log.d(TAG, "ensureValidSession: checking session (forceCheck=$forceCheck)...")
         val state = checkSession(semId)
 
         if (state == SessionState.Dead) {
-            Log.w(TAG, "ensureValidSession: session dead — re-logging in")
             return try {
                 doLogin(email, password)
                 checkSession(semId)  // recheck after login
             } catch (e: Exception) {
-                Log.e(TAG, "ensureValidSession: re-login threw exception", e)
                 SessionState.Dead
             }
         }
@@ -337,7 +280,6 @@ class AttendanceApiService {
 
             // [] received — could be dead session that slipped through TTL, force recheck
             if (body.trim() == "[]" || !isValidJsonBody(body)) {
-                Log.w(TAG, "fetchSubjects: empty/invalid body — forcing session recheck")
                 when (ensureValidSession(email, password, semId, forceCheck = true)) {
                     SessionState.Offline -> return@withContext Result.failure(Exception("Server is offline. Please try again later."))
                     SessionState.Dead    -> return@withContext Result.failure(Exception("Re-login failed. Check credentials."))
@@ -357,11 +299,9 @@ class AttendanceApiService {
             }
 
             HttpClientHolder.markActivity()
-            Log.d(TAG, "Subjects JSON (first 300): ${body.take(300)}")
             Result.success(gson.fromJson(body, object : TypeToken<List<SubjectApiResponse>>() {}.type))
 
         } catch (e: Exception) {
-            Log.e(TAG, "fetchSubjects error", e)
             Result.failure(e)
         }
     }
@@ -392,7 +332,6 @@ class AttendanceApiService {
             // [] received — could be dead session that slipped through TTL, force recheck
             // After recheck: if still [] then subject genuinely has no records yet
             if (body.trim() == "[]" || !isValidJsonBody(body)) {
-                Log.w(TAG, "fetchAttendanceDetail: empty/invalid body — forcing session recheck")
                 when (ensureValidSession(email, password, semId, forceCheck = true)) {
                     SessionState.Offline -> return@withContext Result.failure(Exception("Server is offline. Please try again later."))
                     SessionState.Dead    -> return@withContext Result.failure(Exception("Re-login failed. Check credentials."))
@@ -415,7 +354,6 @@ class AttendanceApiService {
             Result.success(gson.fromJson(body, object : TypeToken<List<AttendanceApiRecord>>() {}.type))
 
         } catch (e: Exception) {
-            Log.e(TAG, "fetchAttendanceDetail error", e)
             Result.failure(e)
         }
     }
@@ -436,8 +374,6 @@ class AttendanceApiService {
             val body = resp.body?.string() ?: ""
             resp.close()
 
-            Log.d(TAG, "STUDENT_INFO_RAW: $body")
-
             if (body.contains("<html", ignoreCase = true)) {
                 return@withContext Result.failure(Exception("Invalid response"))
             }
@@ -452,7 +388,6 @@ class AttendanceApiService {
                     gson.fromJson(body, StudentInfoResponse::class.java)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to parse student info", e)
                 StudentInfoResponse(null)
             }
 
@@ -464,17 +399,8 @@ class AttendanceApiService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /**
-     * 521 = Cloudflare "Web Server Is Down" — origin server unreachable.
-     * Timeouts are handled separately in checkSession via exception catch.
-     */
     private fun isServerDown(code: Int): Boolean = code == 521
 
-    /**
-     * A valid session response is a non-empty JSON array.
-     *   []   → session invalid / no data  → Dead
-     *   HTML → login redirect page        → Dead
-     */
     private fun isValidJsonBody(body: String): Boolean {
         val trimmed = body.trim()
         if (trimmed.isBlank()) return false

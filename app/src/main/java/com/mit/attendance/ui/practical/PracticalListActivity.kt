@@ -52,7 +52,8 @@ class PracticalListActivity : AppCompatActivity() {
         adapter = PracticalAdapter { practical ->
             val isSubmitted = practical.theory != null
             val intent = Intent(this, SubmitPracticalActivity::class.java).apply {
-                putExtra(PracticalActivity.EXTRA_SUBJECT_ID, subjectId)
+                putExtra(PracticalActivity.EXTRA_SUBJECT_ID,   subjectId)
+                putExtra(PracticalActivity.EXTRA_SUBJECT_NAME, subjectName)
                 putExtra("practical_id", practical.id)
                 putExtra("practical_number", practical.practicalNumber)
                 putExtra("practical_title", practical.practicalAim)

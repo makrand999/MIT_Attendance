@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="timetable"
+        android:enabled="true"
+        android:icon="@drawable/ic_icon"
+        android:shortcutShortLabel="@string/shortcut_timetable_short"
+        android:shortcutLongLabel="@string/shortcut_timetable_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.mit.attendance"
+            android:targetClass="com.mit.attendance.ui.timetable.TimetableActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="erp"
+        android:enabled="true"
+        android:icon="@drawable/ic_icon"
+        android:shortcutShortLabel="@string/shortcut_erp_short"
+        android:shortcutLongLabel="@string/shortcut_erp_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.mit.attendance"
+            android:targetClass="com.mit.attendance.ui.subjects.ErpWebViewActivity" />
+    </shortcut>
+</shortcuts>

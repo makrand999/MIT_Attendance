@@ -12,16 +12,23 @@
         android:id="@+id/card_message"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="2dp"
-        app:contentPadding="8dp">
+        app:cardBackgroundColor="@android:color/transparent"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp"
+        app:contentPaddingBottom="10dp"
+        app:contentPaddingLeft="14dp"
+        app:contentPaddingRight="14dp"
+        app:contentPaddingTop="10dp"
+        app:strokeColor="@color/white_20"
+        app:strokeWidth="1dp">
 
         <TextView
             android:id="@+id/tv_message"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@color/text_primary"
-            android:textSize="14sp" />
+            android:textColor="@android:color/white"
+            android:textSize="15sp"
+            android:lineSpacingExtra="2dp" />
 
     </com.google.android.material.card.MaterialCardView>
 
