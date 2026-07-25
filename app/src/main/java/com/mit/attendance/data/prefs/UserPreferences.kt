@@ -24,11 +24,22 @@ class UserPreferences(private val context: Context) {
         private val KEY_HAS_REQUESTED_NOTIF_PERM  = booleanPreferencesKey("has_requested_notif_perm")
         private val KEY_DIVISION_ID               = intPreferencesKey("division_id")
         private val KEY_PRACTICAL_TOKEN           = stringPreferencesKey("practical_token")
+        private val KEY_PRACTICAL_PASSWORD        = stringPreferencesKey("practical_password")
         private val KEY_TIMETABLE_IMAGE_URI       = stringPreferencesKey("timetable_image_uri")
         private val KEY_TIMETABLE_ROTATION        = intPreferencesKey("timetable_rotation")
         private val KEY_UPDATE_LOCKED             = booleanPreferencesKey("update_locked")
         private val KEY_BG_DETAIL_URI             = stringPreferencesKey("bg_detail_uri")
         private val KEY_BG_NAV_URI                = stringPreferencesKey("bg_nav_uri")
+        private val KEY_TERMINAL_SWIPE_TYPING     = booleanPreferencesKey("terminal_swipe_typing")
+        private val KEY_AGENT_SELECTED_PROJECT    = stringPreferencesKey("agent_selected_project")
+        private val KEY_CERTIFICATION_PROXIES     = stringPreferencesKey("certification_proxies")
+        
+        // Profile keys
+        private val KEY_ROLL_NO                   = stringPreferencesKey("roll_no")
+        private val KEY_MOBILE_NO                 = stringPreferencesKey("mobile_no")
+        private val KEY_FIRST_NAME                = stringPreferencesKey("first_name")
+        private val KEY_COURSE_NAME               = stringPreferencesKey("course_name")
+        private val KEY_DASHBOARD_FETCHED         = booleanPreferencesKey("dashboard_fetched")
         
         // Exam Cell Payload keys
         private val KEY_EXAM_CELL_VIEWSTATE       = stringPreferencesKey("exam_cell_viewstate")
@@ -36,6 +47,12 @@ class UserPreferences(private val context: Context) {
         private val KEY_EXAM_CELL_VALIDATION      = stringPreferencesKey("exam_cell_validation")
         private val KEY_EXAM_CELL_LOGIN_URL       = stringPreferencesKey("exam_cell_login_url")
         private val KEY_EXAM_CELL_FULL_BODY       = stringPreferencesKey("exam_cell_full_body")
+
+        // Alerts keys
+        private val KEY_COURSE_GIST_ID            = stringPreferencesKey("course_gist_id")
+        private val KEY_ALERT_VERSION             = intPreferencesKey("alert_version")
+        private val KEY_PRACTICAL_THEORY_PROMPT   = stringPreferencesKey("practical_theory_prompt")
+        private val KEY_PRACTICAL_CONCL_PROMPT    = stringPreferencesKey("practical_conclusion_prompt")
     }
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data
@@ -68,6 +85,18 @@ class UserPreferences(private val context: Context) {
     val bgNavUri: Flow<String?> = context.dataStore.data
         .map { it[KEY_BG_NAV_URI] }
 
+    val terminalSwipeTypingEnabled: Flow<Boolean> = context.dataStore.data
+        .map { it[KEY_TERMINAL_SWIPE_TYPING] ?: false }
+
+    val rollNo: Flow<String?> = context.dataStore.data.map { it[KEY_ROLL_NO] }
+    val mobileNo: Flow<String?> = context.dataStore.data.map { it[KEY_MOBILE_NO] }
+    val firstName: Flow<String?> = context.dataStore.data.map { it[KEY_FIRST_NAME] }
+    val courseName: Flow<String?> = context.dataStore.data.map { it[KEY_COURSE_NAME] }
+    val courseGistId: Flow<String?> = context.dataStore.data.map { it[KEY_COURSE_GIST_ID] }
+    val alertVersion: Flow<Int> = context.dataStore.data.map { it[KEY_ALERT_VERSION] ?: 0 }
+    val certificationProxies: Flow<List<String>> = context.dataStore.data
+        .map { decodeCertificationProxies(it[KEY_CERTIFICATION_PROXIES]) }
+
     suspend fun saveCredentials(email: String, password: String, semId: Int) {
         context.dataStore.edit {
             it[KEY_EMAIL]        = email
@@ -82,6 +111,19 @@ class UserPreferences(private val context: Context) {
             it[KEY_GENDER] = gender
         }
     }
+
+    suspend fun saveProfile(rollNo: String?, mobileNo: String?, firstName: String?, courseName: String?) {
+        context.dataStore.edit {
+            it[KEY_ROLL_NO] = rollNo ?: ""
+            it[KEY_MOBILE_NO] = mobileNo ?: ""
+            it[KEY_FIRST_NAME] = firstName ?: ""
+            it[KEY_COURSE_NAME] = courseName ?: ""
+            it[KEY_DASHBOARD_FETCHED] = true
+        }
+    }
+
+    suspend fun isDashboardFetched(): Boolean =
+        context.dataStore.data.first()[KEY_DASHBOARD_FETCHED] ?: false
 
     suspend fun saveExamCellUserId(userId: String) {
         context.dataStore.edit {
@@ -121,6 +163,13 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it[KEY_PRACTICAL_TOKEN] = token }
     }
 
+    suspend fun savePracticalPassword(password: String?) {
+        context.dataStore.edit {
+            if (password.isNullOrBlank()) it.remove(KEY_PRACTICAL_PASSWORD)
+            else it[KEY_PRACTICAL_PASSWORD] = password
+        }
+    }
+
     suspend fun saveTimetableImageUri(uri: String) {
         context.dataStore.edit { it[KEY_TIMETABLE_IMAGE_URI] = uri }
     }
@@ -144,6 +193,88 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { 
             if (uri == null) it.remove(KEY_BG_NAV_URI)
             else it[KEY_BG_NAV_URI] = uri 
+        }
+    }
+
+    suspend fun setTerminalSwipeTypingEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_TERMINAL_SWIPE_TYPING] = enabled }
+    }
+
+    suspend fun isTerminalSwipeTypingEnabled(): Boolean =
+        context.dataStore.data.first()[KEY_TERMINAL_SWIPE_TYPING] ?: false
+
+    suspend fun setAgentSelectedProject(project: String?) {
+        context.dataStore.edit {
+            if (project.isNullOrBlank()) {
+                it.remove(KEY_AGENT_SELECTED_PROJECT)
+            } else {
+                it[KEY_AGENT_SELECTED_PROJECT] = project
+            }
+        }
+    }
+
+    suspend fun getAgentSelectedProject(): String? =
+        context.dataStore.data.first()[KEY_AGENT_SELECTED_PROJECT]
+
+    suspend fun saveCourseGistId(gistId: String) {
+        context.dataStore.edit { it[KEY_COURSE_GIST_ID] = gistId }
+    }
+
+    suspend fun saveAlertVersion(version: Int) {
+        context.dataStore.edit { it[KEY_ALERT_VERSION] = version }
+    }
+
+    suspend fun saveCertificationProxies(proxies: List<String>) {
+        context.dataStore.edit {
+            if (proxies.isEmpty()) {
+                it.remove(KEY_CERTIFICATION_PROXIES)
+            } else {
+                it[KEY_CERTIFICATION_PROXIES] = proxies.joinToString("\n")
+            }
+        }
+    }
+
+    suspend fun savePracticalTheoryPrompt(prompt: String?) {
+        context.dataStore.edit {
+            if (prompt.isNullOrBlank()) it.remove(KEY_PRACTICAL_THEORY_PROMPT)
+            else it[KEY_PRACTICAL_THEORY_PROMPT] = prompt
+        }
+    }
+
+    suspend fun savePracticalConclusionPrompt(prompt: String?) {
+        context.dataStore.edit {
+            if (prompt.isNullOrBlank()) it.remove(KEY_PRACTICAL_CONCL_PROMPT)
+            else it[KEY_PRACTICAL_CONCL_PROMPT] = prompt
+        }
+    }
+
+    /**
+     * Clears only account-specific ERP data, preserving user settings 
+     * like background images, notification settings, and timetable.
+     */
+    suspend fun clearAccountData() {
+        context.dataStore.edit {
+            it.remove(KEY_EMAIL)
+            it.remove(KEY_PASSWORD)
+            it.remove(KEY_SEM_ID)
+            it[KEY_IS_LOGGED_IN] = false
+            it.remove(KEY_GENDER)
+            it.remove(KEY_EXAM_CELL_USERID)
+            it.remove(KEY_DIVISION_ID)
+            it.remove(KEY_PRACTICAL_TOKEN)
+            it.remove(KEY_PRACTICAL_PASSWORD)
+            it.remove(KEY_ROLL_NO)
+            it.remove(KEY_MOBILE_NO)
+            it.remove(KEY_FIRST_NAME)
+            it.remove(KEY_COURSE_NAME)
+            it.remove(KEY_DASHBOARD_FETCHED)
+            it.remove(KEY_EXAM_CELL_VIEWSTATE)
+            it.remove(KEY_EXAM_CELL_GENERATOR)
+            it.remove(KEY_EXAM_CELL_VALIDATION)
+            it.remove(KEY_EXAM_CELL_LOGIN_URL)
+            it.remove(KEY_EXAM_CELL_FULL_BODY)
+            it.remove(KEY_COURSE_GIST_ID)
+            it.remove(KEY_ALERT_VERSION)
         }
     }
 
@@ -187,12 +318,48 @@ class UserPreferences(private val context: Context) {
         return context.dataStore.data.first()[KEY_PRACTICAL_TOKEN]
     }
 
+    suspend fun getPracticalPassword(): String? {
+        return context.dataStore.data.first()[KEY_PRACTICAL_PASSWORD]
+    }
+
+    suspend fun getPracticalTheoryPrompt(): String? {
+        return context.dataStore.data.first()[KEY_PRACTICAL_THEORY_PROMPT]
+    }
+
+    suspend fun getPracticalConclusionPrompt(): String? {
+        return context.dataStore.data.first()[KEY_PRACTICAL_CONCL_PROMPT]
+    }
+
     suspend fun getTimetableImageUri(): String? {
         return context.dataStore.data.first()[KEY_TIMETABLE_IMAGE_URI]
     }
 
     suspend fun getTimetableRotation(): Int {
         return context.dataStore.data.first()[KEY_TIMETABLE_ROTATION] ?: 0
+    }
+
+    suspend fun getCourseNameSnapshot(): String? {
+        return context.dataStore.data.first()[KEY_COURSE_NAME]
+    }
+
+    suspend fun getFirstNameSnapshot(): String? {
+        return context.dataStore.data.first()[KEY_FIRST_NAME]
+    }
+
+    suspend fun getRollNoSnapshot(): String? {
+        return context.dataStore.data.first()[KEY_ROLL_NO]
+    }
+
+    suspend fun getCourseGistIdSnapshot(): String? {
+        return context.dataStore.data.first()[KEY_COURSE_GIST_ID]
+    }
+
+    suspend fun getAlertVersionSnapshot(): Int {
+        return context.dataStore.data.first()[KEY_ALERT_VERSION] ?: 0
+    }
+
+    suspend fun getCertificationProxies(): List<String> {
+        return decodeCertificationProxies(context.dataStore.data.first()[KEY_CERTIFICATION_PROXIES])
     }
 
     /**
@@ -219,4 +386,13 @@ class UserPreferences(private val context: Context) {
 
     suspend fun isUpdateLockedSnapshot(): Boolean =
         context.dataStore.data.first()[KEY_UPDATE_LOCKED] ?: false
+
+    private fun decodeCertificationProxies(raw: String?): List<String> {
+        return raw
+            ?.lineSequence()
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.toList()
+            ?: emptyList()
+    }
 }

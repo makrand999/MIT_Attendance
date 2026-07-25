@@ -8,8 +8,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.webkit.*
-import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
+import com.mit.attendance.databinding.ActivityErpWebviewBinding
 
 class ChatGPTWebViewActivity : AppCompatActivity() {
 
@@ -21,59 +21,58 @@ class ChatGPTWebViewActivity : AppCompatActivity() {
         const val FIELD_CONCLUSION = "conclusion"
     }
 
-    private lateinit var webView: WebView
-    private lateinit var progressBar: ProgressBar
+    private lateinit var binding: ActivityErpWebviewBinding
     private var fieldType: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        binding = ActivityErpWebviewBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         
         fieldType = intent.getStringExtra(EXTRA_FIELD_TYPE)
         
-        val root = android.widget.FrameLayout(this)
-        webView = WebView(this)
-        webView.visibility = View.INVISIBLE
+        binding.webView.visibility = View.INVISIBLE
+        binding.progressBar.visibility = View.GONE
         
-        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
-        progressBar.isIndeterminate = true
-        progressBar.visibility = View.GONE
-        
-        root.addView(webView)
-        root.addView(progressBar, android.widget.FrameLayout.LayoutParams(
-            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
-        ))
-        
-        setContentView(root)
-
-        supportActionBar?.apply {
-            title = "ChatGPT AI"
-            setDisplayHomeAsUpEnabled(true)
+        // Setup bottom-left back button
+        binding.btnBack.visibility = View.VISIBLE
+        binding.btnBack.setOnClickListener {
+            finish()
         }
 
+        // Hide toolbar
+        binding.toolbar.visibility = View.GONE
+
         setupWebView()
-        webView.loadUrl("https://chatgpt.com")
+        binding.webView.loadUrl("https://chatgpt.com")
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        val settings = webView.settings
+        val settings = binding.webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
+        settings.databaseEnabled = true
         // Modern User Agent to avoid legacy mobile site issues
         settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
-        webView.addJavascriptInterface(WebAppInterface(), "Android")
+        binding.webView.addJavascriptInterface(WebAppInterface(), "Android")
 
-        webView.webViewClient = object : WebViewClient() {
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
+
+        binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                CookieManager.getInstance().flush()
+                
                 if (url?.contains("chatgpt.com") == true) {
                     // CRITICAL: If on a login or captcha page, show it and don't inject the "hider" script
                     if (url.contains("/auth") || url.contains("/login") || url.contains("/signup") || url.contains("challenges.cloudflare.com")) {
-                        webView.visibility = View.VISIBLE
-                        progressBar.visibility = View.GONE
+                        binding.webView.visibility = View.VISIBLE
+                        binding.progressBar.visibility = View.GONE
                         return
                     }
                     
@@ -83,13 +82,13 @@ class ChatGPTWebViewActivity : AppCompatActivity() {
             }
         }
 
-        webView.webChromeClient = object : WebChromeClient() {
+        binding.webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (newProgress < 100) {
-                    progressBar.visibility = View.VISIBLE
-                    progressBar.progress = newProgress
+                    binding.progressBar.visibility = View.VISIBLE
+                    binding.progressBar.progress = newProgress
                 } else {
-                    progressBar.visibility = View.GONE
+                    binding.progressBar.visibility = View.GONE
                 }
             }
         }
@@ -252,14 +251,6 @@ class ChatGPTWebViewActivity : AppCompatActivity() {
                 }, 300);
               }).observe(document.documentElement, { childList: true, subtree: true });
 
-              // Less frequent intervals
-              setInterval(() => { sweep(); killConsentBanner(); }, 3000);
-
-              window.open    = () => null;
-              window.alert   = () => {};
-              window.confirm = () => false;
-              window.prompt  = () => null;
-
               /* ── 3. Listen for Copy Button ── */
               document.addEventListener('click', function(e) {
                   const btn = e.target.closest('button[aria-label="Copy response"]');
@@ -275,9 +266,9 @@ class ChatGPTWebViewActivity : AppCompatActivity() {
             })();
         """.trimIndent()
         
-        webView.evaluateJavascript(munishJs) {
-            webView.postDelayed({
-                webView.visibility = View.VISIBLE
+        binding.webView.evaluateJavascript(munishJs) {
+            binding.webView.postDelayed({
+                binding.webView.visibility = View.VISIBLE
             }, 100)
         }
     }
@@ -288,8 +279,8 @@ class ChatGPTWebViewActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        webView.stopLoading()
-        webView.destroy()
+        binding.webView.stopLoading()
+        binding.webView.destroy()
         super.onDestroy()
     }
 }

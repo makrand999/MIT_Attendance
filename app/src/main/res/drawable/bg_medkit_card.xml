@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:top="4dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/medkit_line" />
+            <corners android:radius="28dp" />
+        </shape>
+    </item>
+
+    <item android:bottom="4dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/white" />
+            <corners android:radius="28dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/medkit_line" />
+        </shape>
+    </item>
+</layer-list>

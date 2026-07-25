@@ -6,9 +6,12 @@
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/accent</item>
+        <item name="android:fontFamily">@font/nunito</item>
+        <item name="fontFamily">@font/nunito</item>
 
         <!-- Background and Surface -->
         <item name="android:colorBackground">@color/background</item>
+        <item name="android:windowBackground">@drawable/bg_medkit_screen</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/text_primary</item>
 
@@ -17,8 +20,10 @@
         <item name="android:textColorSecondary">@color/text_secondary</item>
 
         <!-- Status and Nav Bars -->
-        <item name="android:statusBarColor">@color/primary_dark</item>
-        <item name="android:navigationBarColor">@color/primary_dark</item>
+        <item name="android:statusBarColor">@color/medkit_cream</item>
+        <item name="android:navigationBarColor">@color/medkit_cream</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
 
         <!-- Toolbar / Popup -->
         <item name="actionBarPopupTheme">@style/AppPopupTheme</item>
@@ -48,6 +53,73 @@
         <item name="cardCornerRadius">12dp</item>
     </style>
 
+    <style name="Widget.MITAttendance.MedKitButton" parent="Widget.Material3.Button">
+        <item name="android:fontFamily">@font/nunito</item>
+        <item name="fontFamily">@font/nunito</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/medkit_ink</item>
+        <item name="backgroundTint">@color/medkit_butter</item>
+        <item name="strokeColor">@color/medkit_line</item>
+        <item name="strokeWidth">2dp</item>
+        <item name="cornerRadius">28dp</item>
+        <item name="android:elevation">6dp</item>
+        <item name="elevation">6dp</item>
+        <item name="iconTint">@color/medkit_ink</item>
+        <item name="rippleColor">@color/medkit_cream_2</item>
+    </style>
+
+    <style name="Widget.MITAttendance.MedKitButton.Peach" parent="Widget.MITAttendance.MedKitButton">
+        <item name="backgroundTint">@color/medkit_peach</item>
+    </style>
+
+    <style name="Widget.MITAttendance.MedKitButton.Mint" parent="Widget.MITAttendance.MedKitButton">
+        <item name="backgroundTint">@color/medkit_mint</item>
+    </style>
+
+    <style name="Widget.MITAttendance.MedKitButton.Sky" parent="Widget.MITAttendance.MedKitButton">
+        <item name="backgroundTint">@color/medkit_sky</item>
+    </style>
+
+    <style name="Widget.MITAttendance.MedKitButton.Ghost" parent="Widget.MITAttendance.MedKitButton">
+        <item name="backgroundTint">@color/white</item>
+    </style>
+
+    <style name="Widget.MITAttendance.LoginInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxBackgroundColor">@color/medkit_cream_2</item>
+        <item name="boxStrokeColor">@color/medkit_line</item>
+        <item name="boxStrokeWidth">2dp</item>
+        <item name="boxStrokeWidthFocused">3dp</item>
+        <item name="boxCornerRadiusTopStart">18dp</item>
+        <item name="boxCornerRadiusTopEnd">18dp</item>
+        <item name="boxCornerRadiusBottomStart">18dp</item>
+        <item name="boxCornerRadiusBottomEnd">18dp</item>
+        <item name="hintTextColor">@color/medkit_ink_2</item>
+        <item name="startIconTint">@color/medkit_ink</item>
+        <item name="endIconTint">@color/medkit_ink</item>
+        <item name="passwordToggleTint">@color/medkit_ink</item>
+    </style>
+
+    <style name="Widget.MITAttendance.LoginInput.Dropdown" parent="Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+        <item name="boxBackgroundColor">@color/medkit_cream_2</item>
+        <item name="boxStrokeColor">@color/medkit_line</item>
+        <item name="boxStrokeWidth">2dp</item>
+        <item name="boxStrokeWidthFocused">3dp</item>
+        <item name="boxCornerRadiusTopStart">18dp</item>
+        <item name="boxCornerRadiusTopEnd">18dp</item>
+        <item name="boxCornerRadiusBottomStart">18dp</item>
+        <item name="boxCornerRadiusBottomEnd">18dp</item>
+        <item name="hintTextColor">@color/medkit_ink_2</item>
+        <item name="endIconTint">@color/medkit_ink</item>
+    </style>
+
+    <style name="TextAppearance.MITAttendance.ToolbarTitle" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:fontFamily">@font/nunito</item>
+        <item name="fontFamily">@font/nunito</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/medkit_ink</item>
+    </style>
+
     <style name="BadgeStyle">
         <item name="android:background">@drawable/badge_background</item>
         <item name="android:textColor">@android:color/white</item>
@@ -60,11 +132,22 @@
 
     <style name="TransparentDialog" parent="Theme.Material3.DayNight.Dialog">
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowIsFloating">true</item>
         <item name="android:windowFrame">@null</item>
+        <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">true</item>
-        <item name="android:backgroundDimAmount">0.9</item>
+        <item name="android:backgroundDimAmount">0.8</item>
+        <item name="android:windowMinWidthMajor">90%</item>
+        <item name="android:windowMinWidthMinor">90%</item>
+        <!-- Ensure dropdown list doesn't have its own background -->
+        <item name="android:dropDownListViewStyle">@style/TransparentListView</item>
+    </style>
+
+    <style name="TransparentListView" parent="@style/Widget.AppCompat.ListView.DropDown">
+        <item name="android:divider">@null</item>
+        <item name="android:listSelector">?attr/selectableItemBackground</item>
     </style>
 
 </resources>

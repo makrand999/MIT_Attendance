@@ -4,22 +4,16 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark">
+    android:background="@drawable/bg_medkit_screen">
 
     <!-- Activity Background -->
     <ImageView
         android:id="@+id/ivBackground"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerCrop"
-        android:src="@drawable/bg_detail"
+        android:scaleType="fitXY"
+        android:src="@drawable/bg_medkit_screen"
         tools:ignore="ContentDescription" />
-
-    <!-- Dim Overlay -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#B3000000" />
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
@@ -30,11 +24,19 @@
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="@android:color/transparent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/bg_medkit_card"
+            android:minHeight="?attr/actionBarSize"
+            android:paddingStart="18dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp"
             app:navigationIcon="@drawable/ic_back"
-            app:navigationIconTint="@color/white"
-            app:titleTextColor="@color/white" />
+            app:navigationIconTint="@color/medkit_line"
+            app:titleTextColor="@color/medkit_ink" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -52,14 +54,15 @@
 
             <!-- Aim & Description Section -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardAimDesc"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="24dp"
-                app:cardBackgroundColor="@color/white_10"
+                app:cardBackgroundColor="@color/medkit_peach"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
-                app:strokeColor="@color/white_20"
-                app:strokeWidth="1dp">
+                app:strokeColor="@color/medkit_line"
+                app:strokeWidth="2dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -80,7 +83,7 @@
                             android:letterSpacing="0.1"
                             android:text="Aim &amp; Description"
                             android:textAllCaps="true"
-                            android:textColor="@color/white_70"
+                            android:textColor="@color/medkit_ink_2"
                             android:textSize="12sp"
                             android:textStyle="bold" />
 
@@ -91,8 +94,8 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:padding="6dp"
                             android:scaleType="fitCenter"
-                            android:src="@drawable/ic_check_circle"
-                            app:tint="@color/white" />
+                            android:src="@drawable/ic_copy"
+                            app:tint="@color/medkit_ink" />
                     </LinearLayout>
 
                     <TextView
@@ -100,8 +103,8 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:fontFamily="sans-serif-medium"
-                        android:textColor="@color/white"
+                        android:fontFamily="@font/nunito"
+                        android:textColor="@color/medkit_ink"
                         android:textSize="16sp"
                         tools:text="Design and develop a mobile application..." />
 
@@ -111,12 +114,154 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:alpha="0.7"
-                        android:textColor="@color/white"
+                        android:textColor="@color/medkit_ink"
                         android:textSize="14sp"
                         tools:text="Optional additional description details go here." />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardExpectedOutput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/medkit_sky"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/medkit_line"
+                app:strokeWidth="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.1"
+                        android:text="Expected Output"
+                        android:textAllCaps="true"
+                        android:textColor="@color/medkit_ink_2"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvExpectedOutput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textColor="@color/medkit_ink"
+                        android:textSize="14sp"
+                        tools:text="Program prints the calculated result and confirmation message." />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSyncStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/medkit_butter"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/medkit_line"
+                app:strokeWidth="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.1"
+                        android:text="Sync Status"
+                        android:textAllCaps="true"
+                        android:textColor="@color/medkit_ink_2"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvSyncHeadline"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textColor="@color/medkit_ink"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        tools:text="Draft saved locally" />
+
+                    <TextView
+                        android:id="@+id/tvLocalDraftMeta"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textColor="@color/medkit_ink_2"
+                        android:textSize="13sp"
+                        tools:text="Local save: 29 Apr, 10:42 AM" />
+
+                    <TextView
+                        android:id="@+id/tvServerSyncMeta"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="@color/medkit_ink_2"
+                        android:textSize="13sp"
+                        tools:text="Server sync: 29 Apr, 11:05 AM" />
+
+                    <TextView
+                        android:id="@+id/tvServerVerifyMeta"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="@color/medkit_ink_2"
+                        android:textSize="13sp"
+                        tools:text="Server verification: 29 Apr, 11:07 AM" />
+
+                    <TextView
+                        android:id="@+id/tvSyncError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textColor="@color/red_light"
+                        android:textSize="13sp"
+                        android:visibility="gone"
+                        tools:text="Last sync failed: connect to college Wi-Fi and retry."
+                        tools:visibility="visible" />
+
+                    <Button
+                        android:id="@+id/btnRetrySync"
+                        style="@style/Widget.MITAttendance.MedKitButton.Ghost"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Retry Pending Sync"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/nunito"
+                android:text="Language"
+                android:textColor="@color/medkit_ink"
+                android:textSize="16sp" />
+
+            <Spinner
+                android:id="@+id/spinnerLanguage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:background="@drawable/bg_medkit_input"
+                android:padding="12dp"
+                android:popupBackground="@drawable/bg_medkit_card_soft" />
 
             <!-- Theory Section -->
             <LinearLayout
@@ -131,35 +276,32 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Theory"
-                    android:textColor="@color/white"
+                    android:textColor="@color/medkit_ink"
                     android:textSize="16sp"
-                    android:fontFamily="sans-serif-medium" />
+                    android:fontFamily="@font/nunito" />
 
                 <ProgressBar
                     android:id="@+id/progressTheory"
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:layout_marginEnd="12dp"
-                    android:indeterminateTint="@color/white"
+                    android:indeterminateTint="@color/medkit_line"
                     android:visibility="gone" />
 
                 <Button
                     android:id="@+id/btnPasteTheory"
-                    style="@style/Widget.Material3.Button.TextButton"
+                    style="@style/Widget.MITAttendance.MedKitButton.Ghost"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Paste"
-                    android:textColor="@color/white_70"
                     android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/btnAiTheory"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    style="@style/Widget.MITAttendance.MedKitButton.Sky"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="✦ AI"
-                    android:textColor="@color/white"
-                    app:strokeColor="@color/white_20"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -171,12 +313,84 @@
                 android:inputType="textMultiLine|textCapSentences"
                 android:gravity="top|start"
                 android:hint="Write or generate theory…"
-                android:background="@drawable/bg_agent_input"
+                android:background="@drawable/bg_medkit_input"
                 android:padding="16dp"
                 android:textSize="14sp"
-                android:textColor="@color/white"
-                android:textColorHint="@color/white_70"
+                android:textColor="@color/medkit_ink"
+                android:textColorHint="@color/medkit_ink_soft"
                 android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:fontFamily="@font/nunito"
+                android:text="Code"
+                android:textColor="@color/medkit_ink"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/etCode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:background="@drawable/bg_medkit_input"
+                android:gravity="top|start"
+                android:hint="Add your code or leave blank for theory-only work…"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:minLines="8"
+                android:padding="16dp"
+                android:textColor="@color/medkit_ink"
+                android:textColorHint="@color/medkit_ink_soft"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:fontFamily="@font/nunito"
+                android:text="Output"
+                android:textColor="@color/medkit_ink"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/etOutput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:background="@drawable/bg_medkit_input"
+                android:gravity="top|start"
+                android:hint="Paste output, logs, or observations…"
+                android:inputType="textMultiLine|textCapSentences"
+                android:minLines="5"
+                android:padding="16dp"
+                android:textColor="@color/medkit_ink"
+                android:textColorHint="@color/medkit_ink_soft"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:fontFamily="@font/nunito"
+                android:text="Error Notes"
+                android:textColor="@color/medkit_ink"
+                android:textSize="16sp" />
+
+            <EditText
+                android:id="@+id/etError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:background="@drawable/bg_medkit_input"
+                android:gravity="top|start"
+                android:hint="Optional error details or troubleshooting notes…"
+                android:inputType="textMultiLine|textCapSentences"
+                android:minLines="4"
+                android:padding="16dp"
+                android:textColor="@color/medkit_ink"
+                android:textColorHint="@color/medkit_ink_soft"
+                android:textSize="14sp" />
 
             <!-- Conclusion Section -->
             <LinearLayout
@@ -191,35 +405,32 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Conclusion"
-                    android:textColor="@color/white"
+                    android:textColor="@color/medkit_ink"
                     android:textSize="16sp"
-                    android:fontFamily="sans-serif-medium" />
+                    android:fontFamily="@font/nunito" />
 
                 <ProgressBar
                     android:id="@+id/progressConclusion"
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:layout_marginEnd="12dp"
-                    android:indeterminateTint="@color/white"
+                    android:indeterminateTint="@color/medkit_line"
                     android:visibility="gone" />
 
                 <Button
                     android:id="@+id/btnPasteConclusion"
-                    style="@style/Widget.Material3.Button.TextButton"
+                    style="@style/Widget.MITAttendance.MedKitButton.Ghost"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Paste"
-                    android:textColor="@color/white_70"
                     android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/btnAiConclusion"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    style="@style/Widget.MITAttendance.MedKitButton.Sky"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="✦ AI"
-                    android:textColor="@color/white"
-                    app:strokeColor="@color/white_20"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -231,12 +442,115 @@
                 android:inputType="textMultiLine|textCapSentences"
                 android:gravity="top|start"
                 android:hint="Write or generate conclusion…"
-                android:background="@drawable/bg_agent_input"
+                android:background="@drawable/bg_medkit_input"
                 android:padding="16dp"
                 android:textSize="14sp"
-                android:textColor="@color/white"
-                android:textColorHint="@color/white_70"
+                android:textColor="@color/medkit_ink"
+                android:textColorHint="@color/medkit_ink_soft"
                 android:layout_marginBottom="32dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/white"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/medkit_line"
+                app:strokeWidth="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.1"
+                        android:text="Attachment"
+                        android:textAllCaps="true"
+                        android:textColor="@color/medkit_ink_2"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvAttachmentName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="No PDF selected"
+                        android:textColor="@color/medkit_ink"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvRemoteAttachment"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textColor="@color/medkit_ink_2"
+                        android:textSize="13sp"
+                        android:visibility="gone"
+                        tools:text="Server file: practical_3.pdf" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnChoosePdf"
+                            style="@style/Widget.MITAttendance.MedKitButton.Peach"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_weight="1"
+                            android:text="Choose PDF" />
+
+                        <Button
+                            android:id="@+id/btnRemovePdf"
+                            style="@style/Widget.MITAttendance.MedKitButton.Ghost"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Remove" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnPreviewPdf"
+                        style="@style/Widget.MITAttendance.MedKitButton.Ghost"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Preview PDF"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnSaveServerDraft"
+                    style="@style/Widget.MITAttendance.MedKitButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:text="Save Server Draft" />
+
+                <Button
+                    android:id="@+id/btnLoadServerCopy"
+                    style="@style/Widget.MITAttendance.MedKitButton.Ghost"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Load Server Copy" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvSubmitStatus"
@@ -245,6 +559,7 @@
                 android:gravity="center"
                 android:layout_marginBottom="16dp"
                 android:textSize="14sp"
+                android:textColor="@color/medkit_ink"
                 android:visibility="gone" />
 
             <ProgressBar
@@ -253,22 +568,18 @@
                 android:layout_height="32dp"
                 android:layout_gravity="center"
                 android:layout_marginBottom="16dp"
-                android:indeterminateTint="@color/white"
+                android:indeterminateTint="@color/medkit_line"
                 android:visibility="gone" />
 
             <Button
                 android:id="@+id/btnSubmit"
-                style="@style/Widget.Material3.Button.OutlinedButton"
+                style="@style/Widget.MITAttendance.MedKitButton.Peach"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:padding="16dp"
                 android:text="Submit Practical"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:textColor="@color/white"
-                app:backgroundTint="@color/white_10"
-                app:strokeColor="@color/white_20"
-                app:strokeWidth="1dp"
                 android:layout_marginBottom="24dp" />
 
         </LinearLayout>

@@ -68,6 +68,7 @@ class ChatGptWebView(private val context: Context) {
             webView.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
+                databaseEnabled = true
                 userAgentString =
                     "Mozilla/5.0 (Linux; Android 13; Pixel 7) " +
                             "AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -79,12 +80,19 @@ class ChatGptWebView(private val context: Context) {
 
             onReady?.let { onReadyListeners.add(it) }
 
+            // Initialize CookieManager
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieManager.setAcceptThirdPartyCookies(webView, true)
+
             // Restore cookies if available
             loginManager?.restoreCookiesInto(webView) ?: injectCookies(cookies ?: "")
 
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     Log.d(TAG, "🌐 onPageFinished: $url")
+                    CookieManager.getInstance().flush()
+                    
                     if (!url.contains("chatgpt.com")) return
 
                     if (url.contains("auth/login")) {
@@ -244,11 +252,13 @@ class ChatGptWebView(private val context: Context) {
 
     fun clearCookies() {
         mainHandler.post {
-            Log.d(TAG, "🗑️ clearCookies: Clearing all cookies and site data")
-            val cm = CookieManager.getInstance()
-            cm.removeAllCookies(null)
-            cm.flush()
-            WebStorage.getInstance().deleteAllData()
+            Log.d(TAG, "🗑️ clearCookies: SKIPPED to preserve persistence")
+            // Persistent storage requested by user. 
+            // We no longer clear cookies even during errors.
+            // val cm = CookieManager.getInstance()
+            // cm.removeAllCookies(null)
+            // cm.flush()
+            // WebStorage.getInstance().deleteAllData()
         }
     }
 

@@ -397,6 +397,33 @@ class AttendanceApiService {
         }
     }
 
+    suspend fun fetchDashboardDetails(
+        email: String,
+        password: String,
+        semId: Int
+    ): Result<DashboardResponse> = withContext(Dispatchers.IO) {
+        try {
+            when (ensureValidSession(email, password, semId)) {
+                SessionState.Offline -> return@withContext Result.failure(Exception("Server offline"))
+                SessionState.Dead    -> return@withContext Result.failure(Exception("Session dead"))
+                SessionState.Alive   -> Unit
+            }
+
+            val resp = client.newCall(dashboardRequest()).execute()
+            val body = resp.body?.string() ?: ""
+            resp.close()
+
+            if (body.contains("<html", ignoreCase = true)) {
+                return@withContext Result.failure(Exception("Invalid response"))
+            }
+
+            val data = gson.fromJson(body, DashboardResponse::class.java)
+            Result.success(data)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun isServerDown(code: Int): Boolean = code == 521
@@ -415,6 +442,16 @@ class AttendanceApiService {
             .header("Accept", "application/json, text/javascript, */*; q=0.01")
             .header("X-Requested-With", "XMLHttpRequest")
             .header("Referer", "$BASE_URL/stu_studentProfile.htm")
+            .header("User-Agent", "Mozilla/5.0")
+            .get()
+            .build()
+
+    private fun dashboardRequest(): Request =
+        Request.Builder()
+            .url("$BASE_URL/stu_getStudentDashboardDetails.json")
+            .header("Accept", "application/json, text/javascript, */*; q=0.01")
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Referer", "$BASE_URL/stu_studentDashboard.htm")
             .header("User-Agent", "Mozilla/5.0")
             .get()
             .build()

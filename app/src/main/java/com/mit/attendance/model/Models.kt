@@ -30,6 +30,17 @@ data class StudentInfoResponse(
     val Gender: String?
 )
 
+data class DashboardResponse(
+    val profileDetails: ProfileDetails?
+)
+
+data class ProfileDetails(
+    val rollNo: String?,
+    val mobileNo: String?,
+    val firstName: String?,
+    val courseName: String?
+)
+
 // ── Room entities ─────────────────────────────────────────────────────────────
 
 @Entity(tableName = "subjects")
@@ -67,7 +78,8 @@ data class SubjectUiModel(
     val absent: Int,
     val total: Int,
     val percentage: Float,
-    val hasNewEntries: Boolean = false
+    val hasNewEntries: Boolean = false,
+    val hasNewAlerts: Boolean = false
 )
 
 data class AttendanceUiModel(

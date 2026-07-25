@@ -1,46 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand -->
-    <color name="primary">#1565C0</color>
-    <color name="primary_dark">#0D47A1</color>
-    <color name="primary_light">#1976D2</color>
-    <color name="primary_light_transparent">#B31976D2</color> <!-- 70% opacity -->
-    <color name="accent">#FF6F00</color>
-    <color name="accent_light">#FFA000</color>
+    <!-- MedKit-inspired brand -->
+    <color name="primary">#FF8E5C</color>
+    <color name="primary_dark">#E77746</color>
+    <color name="primary_light">#FFB68A</color>
+    <color name="primary_light_transparent">#B3FFB68A</color>
+    <color name="accent">#FFD86B</color>
+    <color name="accent_light">#F5B73D</color>
 
     <!-- Status -->
-    <color name="green">#2E7D32</color>
-    <color name="green_light">#4CAF50</color>
-    <color name="red">#C62828</color>
-    <color name="red_light">#F44336</color>
-    <color name="yellow">#F57F17</color>
+    <color name="green">#5FCFA0</color>
+    <color name="green_light">#A8E5C8</color>
+    <color name="red">#F47A92</color>
+    <color name="red_light">#FFB3C0</color>
+    <color name="yellow">#F5B73D</color>
 
     <!-- Backgrounds -->
-    <color name="background">#F5F7FB</color>
-    <color name="background_dark">#0F0F1A</color>
+    <color name="background">#FFF6E6</color>
+    <color name="background_dark">#FFF6E6</color>
     <color name="card_background">#FFFFFF</color>
     <color name="card_background_transparent">#B3FFFFFF</color> <!-- 70% opacity -->
     <color name="surface_transparent">#D9FFFFFF</color> <!-- 85% opacity -->
     <color name="new_entry_bg">#E8F5E9</color>
     <color name="surface">#FFFFFF</color>
-    <color name="bg_color">#F5F7FB</color>
+    <color name="bg_color">#FFF6E6</color>
 
     <!-- Text -->
-    <color name="text_primary">#1A1A2E</color>
-    <color name="text_secondary">#5C6370</color>
-    <color name="text_hint">#9E9E9E</color>
+    <color name="text_primary">#3B2A1F</color>
+    <color name="text_secondary">#6B4F3F</color>
+    <color name="text_hint">#8E7261</color>
 
     <!-- Colors -->
     <color name="white">#FFFFFF</color>
     <color name="white_70">#B0FFFFFF</color>
     <color name="white_20">#33FFFFFF</color>
     <color name="white_10">#1AFFFFFF</color>
+    <color name="white_5">#0DFFFFFF</color>
     <color name="black">#000000</color>
 
     <!-- Other -->
-    <color name="divider">#E0E0E0</color>
-    <color name="badge_new">#1B5E20</color>
-    <color name="toolbar_text">#FFFFFF</color>
+    <color name="divider">#EADCCA</color>
+    <color name="badge_new">#5FCFA0</color>
+    <color name="toolbar_text">#3B2A1F</color>
 
     <!-- Glassy UI -->
     <color name="glass_card_bg">@color/white_10</color>
@@ -54,4 +55,24 @@
     <!-- New Badge Alternatives -->
     <color name="faint_pink">#FFF1F3</color>
     <color name="faint_pink_border">#FFCDD2</color>
+
+    <!-- MedKit theme tokens -->
+    <color name="medkit_cream">#FFF6E6</color>
+    <color name="medkit_cream_2">#FFEFD1</color>
+    <color name="medkit_peach">#FFB68A</color>
+    <color name="medkit_peach_deep">#FF8E5C</color>
+    <color name="medkit_butter">#FFD86B</color>
+    <color name="medkit_butter_deep">#F5B73D</color>
+    <color name="medkit_mint">#A8E5C8</color>
+    <color name="medkit_mint_deep">#5FCFA0</color>
+    <color name="medkit_sky">#A6D8FF</color>
+    <color name="medkit_sky_deep">#5AB7F2</color>
+    <color name="medkit_rose">#FFB3C0</color>
+    <color name="medkit_rose_deep">#F47A92</color>
+    <color name="medkit_ink">#3B2A1F</color>
+    <color name="medkit_ink_2">#6B4F3F</color>
+    <color name="medkit_ink_soft">#8E7261</color>
+    <color name="medkit_line">#2B1E16</color>
+    <color name="medkit_paper">#FFFAF0</color>
+    <color name="medkit_shadow">#332B1E16</color>
 </resources>

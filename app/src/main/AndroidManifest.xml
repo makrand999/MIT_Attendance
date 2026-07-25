@@ -4,9 +4,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:name=".MITAttendanceApp"
@@ -21,6 +26,10 @@
         android:theme="@style/Theme.MITAttendance"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
+
+        <receiver
+            android:name=".ui.alerts.AlertReminderReceiver"
+            android:exported="false" />
 
         <activity
             android:name=".ui.login.SplashActivity"
@@ -41,16 +50,40 @@
             android:theme="@style/Theme.MITAttendance" />
 
         <activity
-            android:name=".auth.LoginActivity"
-            android:exported="false"
-            android:label="ChatGPT Login"
-            android:theme="@style/Theme.MITAttendance" />
-
-        <activity
             android:name=".ui.subjects.SubjectsActivity"
             android:exported="false"
             android:label="My Attendance"
             android:theme="@style/Theme.MITAttendance" />
+
+        <activity
+            android:name=".ui.subjects.NotesActivity"
+            android:exported="true"
+            android:label="File Explorer"
+            android:parentActivityName=".ui.subjects.SubjectsActivity"
+            android:theme="@style/Theme.MITAttendance">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
+        <activity
+            android:name="com.mit.attendance.ui.subjects.editor.EditorCropActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <activity
             android:name=".ui.subjects.CustomizeActivity"
@@ -62,6 +95,12 @@
             android:name=".ui.subjects.ErpWebViewActivity"
             android:exported="false"
             android:label="ERP"
+            android:parentActivityName=".ui.subjects.SubjectsActivity" />
+
+        <activity
+            android:name=".ui.subjects.GenericWebViewActivity"
+            android:exported="false"
+            android:label="Web View"
             android:parentActivityName=".ui.subjects.SubjectsActivity" />
 
         <activity
@@ -80,6 +119,12 @@
             android:name=".ui.detail.AttendanceDetailActivity"
             android:exported="false"
             android:label="Attendance Details"
+            android:parentActivityName=".ui.subjects.SubjectsActivity" />
+
+        <activity
+            android:name=".ui.subjects.AttendanceSubjectsActivity"
+            android:exported="false"
+            android:label="Overall Attendance"
             android:parentActivityName=".ui.subjects.SubjectsActivity" />
 
         <activity
@@ -142,17 +187,61 @@
             android:theme="@style/Theme.MITAttendance" />
 
         <activity
-            android:name=".ui.agent.AgentActivity"
+            android:name=".ui.certifications.DynamicCertificationsActivity"
             android:exported="false"
-            android:label="AI Agent"
-            android:parentActivityName=".ui.subjects.SubjectsActivity"
+            android:label="Dynamic Certifications"
+            android:parentActivityName=".ui.certifications.CertificationsActivity"
             android:theme="@style/Theme.MITAttendance" />
 
         <activity
-            android:name=".ui.agent.AgentFileExplorerActivity"
+            android:name=".ui.agent.AgentActivity"
             android:exported="false"
-            android:label="Agent Files"
-            android:parentActivityName=".ui.agent.AgentActivity"
+            android:label=""
+            android:parentActivityName=".ui.subjects.SubjectsActivity"
+            android:theme="@style/Theme.MITAttendance"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.agent.QwenAuthActivity"
+            android:exported="false"
+            android:label="Qwen Login"
+            android:theme="@style/Theme.MITAttendance" />
+
+        <service
+            android:name=".service.AgentSshService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
+
+        <!-- WorkManager's foreground-service host for downloading APK updates.
+             The ApkDownloadWorker calls setForeground() with type DATA_SYNC, so the
+             system service hosting it must declare that foregroundServiceType. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <!-- MITAttendanceApp implements androidx.work.Configuration.Provider, so
+             WorkManager is initialized on-demand and the default startup
+             initializer node must be removed. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <activity
+            android:name=".ui.alerts.AlertsActivity"
+            android:exported="false"
+            android:label="Class Alerts"
+            android:parentActivityName=".ui.subjects.SubjectsActivity"
             android:theme="@style/Theme.MITAttendance" />
 
         <provider

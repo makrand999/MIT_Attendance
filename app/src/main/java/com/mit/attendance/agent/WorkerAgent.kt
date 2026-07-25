@@ -2,7 +2,6 @@ package com.mit.attendance.agent
 
 import android.content.Context
 import android.util.Log
-import com.mit.attendance.service.ChatGptWebView
 import com.mit.attendance.storage.OutputDirectoryManager
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -13,14 +12,14 @@ private const val TAG = "WorkerAgent"
 // ─────────────────────────────────────────
 //  WORKER AGENT  — v3 (CLEAN OUTPUT)
 // ─────────────────────────────────────────
-class WorkerAgent(private val context: Context, private val webView: ChatGptWebView) {
+class WorkerAgent(private val context: Context, private val session: QwenAgentSession) {
 
     private var cancelled = false
     private var planCard    = ""
     private var subtaskList = emptyList<SubTask>()
     private var sessionTurnCount = 0
 
-    private val outputAnalyzer = OutputAnalyzer(webView)
+    private val outputAnalyzer = OutputAnalyzer(session)
 
     private companion object {
         const val MAX_PLAN_RETRIES  = 3
@@ -88,15 +87,15 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
                     Log.d(TAG, "🔍 run: Starting output analysis for $filename")
                     notifyProgress(onProgress, ProgressEvent.AnalysisStarted(taskIndex, task.filename))
                     val report = try {
-                        withContext(Dispatchers.Main) {
-                            webView.refresh(); delay(WARMUP_MS); sessionTurnCount = 0
-                            outputAnalyzer.analyze(
-                                taskDescription = config.taskDescription,
-                                finishedContent = task.finalContent,
-                                fileExtension   = config.fileExtension,
-                                customPrompt    = config.outputAnalysisPrompt
-                            )
-                        }
+                        session.refresh()
+                        delay(WARMUP_MS)
+                        sessionTurnCount = 0
+                        outputAnalyzer.analyze(
+                            taskDescription = config.taskDescription,
+                            finishedContent = task.finalContent,
+                            fileExtension   = config.fileExtension,
+                            customPrompt    = config.outputAnalysisPrompt
+                        )
                     } catch (e: Exception) { Log.e(TAG, "❌ run: OutputAnalyzer failed: ${e.message}"); null }
 
                     Log.d(TAG, "✅ run: Analysis completed in ${System.currentTimeMillis() - analysisStartTime}ms")
@@ -376,10 +375,8 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
         }
 
         // All retries failed
-        withContext(Dispatchers.Main) {
-            Log.d(TAG, "❌ solveSubTask: All retries exhausted. Clearing cookies for a fresh start.")
-            webView.clearCookies()
-        }
+        Log.d(TAG, "❌ solveSubTask: All retries exhausted. Resetting Qwen session for a fresh start.")
+        session.clearSession()
 
         notifyProgress(onProgress, ProgressEvent.SubTaskDone(task.index, subtask.index, task.subtasks.size, false))
         return SolvedSubTask(subtask, "", partPath, false, lastError)
@@ -389,7 +386,7 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
         firstReply: String,
         fileExtension: String,
         maxContinuations: Int = 5
-    ): String = withContext(Dispatchers.Main) {
+    ): String = withContext(Dispatchers.IO) {
         val loopStartTime = System.currentTimeMillis()
         var accumulated = firstReply
         var prevLength  = 0
@@ -399,7 +396,7 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
             Log.d(TAG, "⏱️ continuationLoop: Check iteration ${iteration + 1}")
 
             val checkReply = try {
-                webView.send("Did you finish writing everything for this part, or did you stop early? Reply with just: DONE or CONTINUE")
+                session.send("Did you finish writing everything for this part, or did you stop early? Reply with just: DONE or CONTINUE")
             } catch (e: Exception) {
                 Log.w(TAG, "⚠️ continuationLoop: Check failed: ${e.message}")
                 return@withContext accumulated
@@ -417,7 +414,7 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
             Log.d(TAG, "🔄 continuationLoop: Nudging LLM to CONTINUE (iteration ${iteration + 1})")
             val chunkStartTime = System.currentTimeMillis()
             val chunk = try {
-                webView.send("Continue exactly where you left off. Output only the remaining code, fenced in ```$fileExtension.")
+                session.send("Continue exactly where you left off. Output only the remaining code, fenced in ```$fileExtension.")
             } catch (e: Exception) {
                 Log.w(TAG, "⚠️ continuationLoop: Send failed: ${e.message}")
                 return@withContext accumulated
@@ -448,9 +445,9 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
         }
     }
 
-    private suspend fun generateAbstract(): String = withContext(Dispatchers.Main) {
+    private suspend fun generateAbstract(): String = withContext(Dispatchers.IO) {
         return@withContext try {
-            val reply = webView.send("In 2–3 sentences, summarise what you just wrote: what it contains, the key function/type names, and what the next part needs to know to build on it. No code. Plain English only.")
+            val reply = session.send("In 2–3 sentences, summarise what you just wrote: what it contains, the key function/type names, and what the next part needs to know to build on it. No code. Plain English only.")
             sessionTurnCount++
             reply.trim().take(400)
         } catch (e: Exception) {
@@ -470,23 +467,23 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
         }
 
         // All retries failed
-        withContext(Dispatchers.Main) {
-            Log.d(TAG, "❌ parsePlanWithRetry: All retries exhausted. Clearing cookies for a fresh start.")
-            webView.clearCookies()
-        }
+        Log.d(TAG, "❌ parsePlanWithRetry: All retries exhausted. Resetting Qwen session for a fresh start.")
+        session.clearSession()
         return null
     }
 
     private suspend fun smartSend(prompt: String, forceRefresh: Boolean = false): String? = try {
-        withContext(Dispatchers.Main) {
-            if (forceRefresh || sessionTurnCount >= MAX_TURNS_PER_SESSION || !webView.isReady) {
-                Log.d(TAG, "🔄 smartSend: Refreshing WebView (Turns: $sessionTurnCount, Force: $forceRefresh)")
+        withContext(Dispatchers.IO) {
+            if (forceRefresh || sessionTurnCount >= MAX_TURNS_PER_SESSION || !session.isReady) {
+                Log.d(TAG, "🔄 smartSend: Refreshing Qwen session (Turns: $sessionTurnCount, Force: $forceRefresh)")
                 val refreshStartTime = System.currentTimeMillis()
-                webView.refresh(); delay(WARMUP_MS); sessionTurnCount = 0
+                session.refresh()
+                delay(WARMUP_MS)
+                sessionTurnCount = 0
                 Log.d(TAG, "✅ smartSend: Refresh completed in ${System.currentTimeMillis() - refreshStartTime}ms")
             }
             val sendStartTime = System.currentTimeMillis()
-            val reply = handleCommands(webView.send(prompt))
+            val reply = handleCommands(session.send(prompt))
             sessionTurnCount++
             Log.d(TAG, "✅ smartSend: Reply received in ${System.currentTimeMillis() - sendStartTime}ms")
             reply
@@ -507,7 +504,7 @@ class WorkerAgent(private val context: Context, private val webView: ChatGptWebV
                 else                     -> break@commandLoop
             }
             Log.d(TAG, "📂 handleCommands: Processing FS command: $clean")
-            reply = try { webView.send("SYSTEM FILESYSTEM RESPONSE:\n$fsResult\n\nNow complete your task. Output only the requested content.") }
+            reply = try { session.send("SYSTEM FILESYSTEM RESPONSE:\n$fsResult\n\nNow complete your task. Output only the requested content.") }
             catch (e: Exception) { Log.e(TAG, "❌ handleCommands: Command follow-up failed: ${e.message}"); break@commandLoop }
         }
         return reply

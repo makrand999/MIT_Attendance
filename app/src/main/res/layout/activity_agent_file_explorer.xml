@@ -2,6 +2,7 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background_dark">
@@ -15,7 +16,7 @@
         android:src="@drawable/bg_detail"
         tools:ignore="ContentDescription" />
 
-    <!-- Dim Overlay -->
+    <!-- Default Dim Overlay -->
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -37,22 +38,162 @@
             app:title="Files"
             app:titleTextColor="@color/white">
 
-            <ImageButton
-                android:id="@+id/btn_share_file"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
                 android:layout_gravity="end"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="12dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_send"
-                android:visibility="gone"
-                app:tint="@color/white" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/btn_pull"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_download"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_push"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_upload"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_delete_files"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_delete"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_cut_files"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cut"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_paste_file"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_paste"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_backup_accounts"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cloud"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_share_file"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_send"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_save_file"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_check_circle"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_run_python"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_terminal"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_crop_image"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cut"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_crop_details"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_plus"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_apply_replacement"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_upload"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+
+                <ImageButton
+                    android:id="@+id/btn_import_image"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="12dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_upload"
+                    android:visibility="gone"
+                    app:tint="@color/white" />
+            </LinearLayout>
 
         </com.google.android.material.appbar.MaterialToolbar>
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/main_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
@@ -82,6 +223,197 @@
                 android:lineSpacingMultiplier="1.2" />
         </ScrollView>
 
+        <io.github.rosemoe.sora.widget.CodeEditor
+            android:id="@+id/codeEditor"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <com.github.barteksc.pdfviewer.PDFView
+            android:id="@+id/pdfView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/iv_file_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:visibility="gone"
+            tools:ignore="ContentDescription" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Container for Overlay WebViews -->
+    <FrameLayout
+        android:id="@+id/webViewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Floating Chat UI (Full Screen Transparent Overlay with Glass) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/chat_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#AA000000"
+        android:visibility="gone">
+
+        <!-- Full screen glass background -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_glass_card"
+            android:layout_margin="8dp" />
+
+        <ImageButton
+            android:id="@+id/btn_chat_index"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="16dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_close"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/white" />
+
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/chat_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_margin="16dp"
+            app:layout_constraintBottom_toTopOf="@id/ll_input_wrapper"
+            app:layout_constraintTop_toBottomOf="@id/btn_chat_index">
+
+            <TextView
+                android:id="@+id/tv_chat_history"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="8dp"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textIsSelectable="true"
+                android:lineSpacingExtra="4dp" />
+        </androidx.core.widget.NestedScrollView>
+
+        <LinearLayout
+            android:id="@+id/ll_input_wrapper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:background="@drawable/bg_glass_card"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="4dp"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <EditText
+                android:id="@+id/et_chat_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:hint="Ask NotebookLM..."
+                android:textColor="@color/white"
+                android:textColorHint="#80FFFFFF"
+                android:padding="12dp"
+                android:maxLines="6"
+                android:inputType="textMultiLine" />
+
+            <ImageButton
+                android:id="@+id/btn_send_chat"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_send"
+                app:tint="@color/white" />
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Blur/Dim Overlay for Long Press -->
+    <View
+        android:id="@+id/blur_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#CC000000"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/fl_menu_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <!-- Selector Box -->
+        <View
+            android:id="@+id/v_selector"
+            android:layout_width="160dp"
+            android:layout_height="56dp"
+            android:background="@drawable/bg_glass_card"
+            android:visibility="invisible" />
+
+        <!-- Floating Long Press Menu -->
+        <LinearLayout
+            android:id="@+id/ll_long_press_menu"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="16dp"
+            android:orientation="vertical"
+            android:padding="4dp">
+
+            <TextView
+                android:id="@+id/tv_menu_folder"
+                android:layout_width="140dp"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:paddingStart="20dp"
+                android:text="Folder"
+                android:textSize="18sp"
+                android:textColor="@color/white" />
+
+            <TextView
+                android:id="@+id/tv_menu_file"
+                android:layout_width="140dp"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:paddingStart="20dp"
+                android:text="File"
+                android:textSize="18sp"
+                android:textColor="@color/white" />
+
+            <TextView
+                android:id="@+id/tv_menu_url"
+                android:layout_width="140dp"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:paddingStart="20dp"
+                android:text="Url"
+                android:textSize="18sp"
+                android:textColor="@color/white" />
+
+            <TextView
+                android:id="@+id/tv_menu_edit"
+                android:layout_width="140dp"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:paddingStart="20dp"
+                android:text="Edit"
+                android:textSize="18sp"
+                android:textColor="@color/white" />
+
+            <TextView
+                android:id="@+id/tv_menu_notebook"
+                android:layout_width="140dp"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:paddingStart="20dp"
+                android:text="Notebook"
+                android:textSize="18sp"
+                android:textColor="@color/white" />
+
+        </LinearLayout>
+    </FrameLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

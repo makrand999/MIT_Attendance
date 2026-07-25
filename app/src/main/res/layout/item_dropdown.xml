@@ -2,7 +2,13 @@
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="16dp"
-    android:textColor="@android:color/white"
-    android:background="#80000000"
-    android:textSize="16sp" />
+    android:background="@drawable/bg_dropdown_item"
+    android:fontFamily="@font/nunito"
+    android:minHeight="44dp"
+    android:paddingStart="20dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="10dp"
+    android:textColor="@color/medkit_ink"
+    android:textSize="16sp"
+    android:textStyle="bold" />

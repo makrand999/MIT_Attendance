@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+
+    <path
+        android:fillColor="@color/white"
+        android:pathData="M64,64m-58,0a58,58 0,1 0,116 0a58,58 0,1 0,-116 0" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M64,64m-58,0a58,58 0,1 0,116 0a58,58 0,1 0,-116 0"
+        android:strokeWidth="5"
+        android:strokeColor="@color/medkit_line" />
+
+    <path
+        android:fillColor="@color/medkit_sky"
+        android:pathData="M26,104c4,-18 18,-28 38,-28s34,10 38,28v13h-76z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M26,104c4,-18 18,-28 38,-28s34,10 38,28v13h-76z"
+        android:strokeWidth="5"
+        android:strokeColor="@color/medkit_line"
+        android:strokeLineJoin="round" />
+
+    <path
+        android:fillColor="#FFD8B5"
+        android:pathData="M30,55a34,34 0,1 0,68 0a34,34 0,1 0,-68 0" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M30,55a34,34 0,1 0,68 0a34,34 0,1 0,-68 0"
+        android:strokeWidth="5"
+        android:strokeColor="@color/medkit_line" />
+
+    <path
+        android:fillColor="@color/medkit_line"
+        android:pathData="M29,49c5,-22 19,-34 38,-34c18,0 31,10 36,29c-14,-7 -28,-9 -42,-6c-11,2 -22,6 -32,11z" />
+    <path
+        android:fillColor="@color/medkit_line"
+        android:pathData="M43,55a4,4 0,1 0,8 0a4,4 0,1 0,-8 0 M77,55a4,4 0,1 0,8 0a4,4 0,1 0,-8 0" />
+    <path
+        android:fillColor="@color/medkit_rose"
+        android:pathData="M37,67a6,4 0,1 0,12 0a6,4 0,1 0,-12 0 M79,67a6,4 0,1 0,12 0a6,4 0,1 0,-12 0" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M49,73q15,13 30,0"
+        android:strokeWidth="5"
+        android:strokeColor="@color/medkit_line"
+        android:strokeLineCap="round" />
+</vector>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true">
+        <inset
+            android:insetLeft="4dp"
+            android:insetTop="4dp"
+            android:insetRight="4dp"
+            android:insetBottom="4dp">
+            <shape android:shape="rectangle">
+                <solid android:color="@color/medkit_butter" />
+                <corners android:radius="999dp" />
+                <stroke
+                    android:width="2dp"
+                    android:color="@color/medkit_line" />
+            </shape>
+        </inset>
+    </item>
+
+    <item>
+        <inset
+            android:insetLeft="4dp"
+            android:insetTop="4dp"
+            android:insetRight="4dp"
+            android:insetBottom="4dp">
+            <shape android:shape="rectangle">
+                <solid android:color="@android:color/transparent" />
+                <corners android:radius="999dp" />
+                <stroke
+                    android:width="2dp"
+                    android:color="@color/medkit_line" />
+            </shape>
+        </inset>
+    </item>
+</selector>

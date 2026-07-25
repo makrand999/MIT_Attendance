@@ -22,13 +22,38 @@
         app:strokeColor="@color/white_20"
         app:strokeWidth="1dp">
 
-        <TextView
-            android:id="@+id/tv_message"
+        <FrameLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@android:color/white"
-            android:textSize="15sp"
-            android:lineSpacingExtra="2dp" />
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/tv_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="2dp"
+                android:textColor="@android:color/white"
+                android:textSize="15sp" />
+
+            <HorizontalScrollView
+                android:id="@+id/hsv_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fillViewport="true"
+                android:paddingBottom="8dp"
+                android:scrollbars="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tv_message_scroll"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="@android:color/white"
+                    android:textSize="15sp"
+                    android:textIsSelectable="true" />
+
+            </HorizontalScrollView>
+        </FrameLayout>
 
     </com.google.android.material.card.MaterialCardView>
 

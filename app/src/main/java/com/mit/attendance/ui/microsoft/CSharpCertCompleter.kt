@@ -27,8 +27,11 @@ class CSharpCertCompleter(private val context: Context) {
 
     private val fccExecutor = Executors.newFixedThreadPool(20).asCoroutineDispatcher()
 
+    private class TranscriptRejectedException(message: String) : Exception(message)
+
     interface Callback {
         fun onStepUpdate(step: Int, message: String, progress: Int = -1, total: Int = -1)
+        fun onDetailUpdate(message: String, isError: Boolean = false) {}
         fun onComplete(success: Boolean, message: String)
     }
 
@@ -47,69 +50,107 @@ class CSharpCertCompleter(private val context: Context) {
         try {
             // Pre-fetch MS username and user ID to check progress
             Log.d(TAG, "Starting certification process...")
+            val usingCSharpDefaultAuth = MicrosoftCookieManager.isCSharpDefaultPresent(context)
             val msProfile = fetchMsProfile() ?: throw Exception("MS_401")
-            val msUserName = msProfile.first
-            val msUserId = msProfile.second
+            var msUserName = msProfile.get("userName")?.asString ?: throw Exception("MS_401")
+            val msUserId = msProfile.get("userId")?.asString ?: throw Exception("MS_401")
             Log.d(TAG, "Fetched MS Profile - User: $msUserName, ID: $msUserId")
-            
-            val completedUids = fetchCompletedMsUids(msUserId)
-            Log.d(TAG, "Completed MS UIDs: $completedUids")
-            
-            val pathsToComplete = pathUids.filter { it !in completedUids }
-            Log.d(TAG, "Paths remaining to complete: $pathsToComplete")
 
             // STEP 1: Complete MS Learn Paths
-            if (pathsToComplete.isEmpty()) {
-                callback.onStepUpdate(1, "MS Learn paths already completed.")
-                Log.d(TAG, "All MS Learn paths already completed.")
+            if (usingCSharpDefaultAuth) {
+                callback.onStepUpdate(1, "Skipping Microsoft Learn module completion.")
+                callback.onDetailUpdate("Using the C# default Microsoft Learn account; modules are treated as already completed.")
+                Log.d(TAG, "Skipping MS Learn path completion because C# default auth is present.")
             } else {
-                for (i in pathsToComplete.indices) {
-                    val pathUid = pathsToComplete[i]
-                    callback.onStepUpdate(1, "Completing MS Learn paths...", i + 1, pathsToComplete.size)
-                    Log.d(TAG, "Completing path: $pathUid")
+                val completedUids = fetchCompletedMsUids(msUserId)
+                Log.d(TAG, "Completed MS UIDs: $completedUids")
+                
+                val pathsToComplete = pathUids.filter { it !in completedUids }
+                Log.d(TAG, "Paths remaining to complete: $pathsToComplete")
+
+                if (pathsToComplete.isEmpty()) {
+                    callback.onStepUpdate(1, "MS Learn paths already completed.")
+                    callback.onDetailUpdate("All Microsoft Learn paths already completed.")
+                    Log.d(TAG, "All MS Learn paths already completed.")
+                } else {
+                    callback.onStepUpdate(1, "Completing all MS Learn paths in parallel...")
+                    Log.d(TAG, "Starting parallel completion for ${pathsToComplete.size} paths")
                     
-                    val result = suspendCoroutine<Boolean> { continuation ->
+                    val result = suspendCoroutine<Result<Unit>> { continuation ->
                         CoroutineScope(Dispatchers.IO).launch {
-                            MicrosoftLearnCompleter.startJob(context, "path", pathUid, object : MicrosoftLearnCompleter.CompletionCallback {
+                            MicrosoftLearnCompleter.startJob(context, "csharp_all", "", object : MicrosoftLearnCompleter.CompletionCallback {
                                 override fun onSuccess() {
-                                    continuation.resume(true)
+                                    continuation.resume(Result.success(Unit))
                                 }
                                 override fun onError(msg: String) {
-                                    continuation.resume(false)
+                                    continuation.resume(Result.failure(Exception(msg)))
+                                }
+                                override fun onStatus(message: String, isError: Boolean) {
+                                    callback.onDetailUpdate(message, isError)
                                 }
                             })
                         }
                     }
                     
-                    if (!result) {
+                    result.exceptionOrNull()?.let { error ->
                         val token = MicrosoftCookieManager.getDocsToken(context)
-                        if (token == null) throw Exception("MS_401")
+                        if (token == null || error.message == "401") throw Exception("MS_401")
+                        throw Exception(error.message ?: "Failed to complete MS Learn paths.")
                     }
-                    
-                    delay(1000) 
                 }
             }
 
-            // STEP 2: Verify Transcript (Placeholder messages)
+            // STEP 2/3: Refresh Microsoft Learn public transcript
             callback.onStepUpdate(2, "Verifying Microsoft transcript...")
-            delay(500)
+            callback.onDetailUpdate("Checking Microsoft Learn transcript sharing status.")
+            val existingTranscriptId = fetchSharedTranscriptId()
+            if (existingTranscriptId == null) {
+                callback.onDetailUpdate("No active public transcript link found.")
+            } else {
+                callback.onDetailUpdate("Existing public transcript link found; refreshing it.")
+            }
 
-            // STEP 3: Create/Share Transcript
             callback.onStepUpdate(3, "Creating shareable transcript link...")
-            delay(500)
+            if (usingCSharpDefaultAuth) {
+                deleteSharedTranscript(existingTranscriptId)
+                msUserName = updateMicrosoftUserName(msProfile, msUserName)
+                callback.onDetailUpdate("Microsoft Learn username changed to $msUserName.")
+            }
+            val transcriptUrl = createFreshTranscriptUrl(msUserName, if (usingCSharpDefaultAuth) null else existingTranscriptId)
+            callback.onDetailUpdate("Created Microsoft Learn transcript link.")
 
             // STEP 4: Link Transcript to FCC
             callback.onStepUpdate(4, "Linking transcript to FreeCodeCamp...")
-            delay(500)
+            val linkedMsUsername = try {
+                linkTranscriptToFreeCodeCamp(transcriptUrl)
+            } catch (e: TranscriptRejectedException) {
+                callback.onDetailUpdate("FreeCodeCamp rejected the transcript link. Rotating Microsoft Learn username and retrying.", true)
+                val currentTranscriptId = fetchSharedTranscriptId()
+                deleteSharedTranscript(currentTranscriptId)
+                msUserName = updateMicrosoftUserName(msProfile, msUserName)
+                callback.onDetailUpdate("Microsoft Learn username changed to $msUserName.")
+                val retryTranscriptUrl = createFreshTranscriptUrl(msUserName, null)
+                callback.onDetailUpdate("Created replacement Microsoft Learn transcript link.")
+                linkTranscriptToFreeCodeCamp(retryTranscriptUrl)
+            }
+            callback.onDetailUpdate("FreeCodeCamp accepted transcript for $linkedMsUsername.")
 
             // STEP 5: Complete FCC Challenges
+            FccCookieManager.syncCookies(context)
             callback.onStepUpdate(5, "Completing FCC C# challenges...")
-            completeFccChallenges { completed, total ->
-                callback.onStepUpdate(5, "Completing FCC C# challenges...", completed, total)
-            }
+            completeFccChallenges(
+                progress = { completed, total ->
+                    callback.onStepUpdate(5, "Completing FCC C# challenges...", completed, total)
+                },
+                detail = { message, isError ->
+                    callback.onDetailUpdate(message, isError)
+                }
+            )
 
             // STEP 6: Submit Exam
+            FccCookieManager.syncCookies(context)
             callback.onStepUpdate(6, "Submitting exam...")
+            callback.onDetailUpdate("Submitting the FreeCodeCamp exam payload.")
             submitFccExam()
 
             callback.onComplete(true, "🎉 C# Certificate earned! Check your FreeCodeCamp profile.")
@@ -124,9 +165,9 @@ class CSharpCertCompleter(private val context: Context) {
         }
     }
 
-    private suspend fun fetchMsProfile(): Pair<String, String>? {
-        val token = MicrosoftCookieManager.getDocsToken(context) ?: throw Exception("MS_401")
-        val cookies = MicrosoftCookieManager.getCookieHeader(context)
+    private suspend fun fetchMsProfile(): JsonObject? {
+        val token = getMicrosoftDocsToken() ?: throw Exception("MS_401")
+        val cookies = getMicrosoftCookieHeader()
         val request = Request.Builder()
             .url("https://learn.microsoft.com/api/profiles/me")
             .header("Authorization", "Bearer $token")
@@ -140,15 +181,14 @@ class CSharpCertCompleter(private val context: Context) {
             if (!response.isSuccessful) return null
             val body = response.body?.string() ?: return null
             val json = gson.fromJson(body, JsonObject::class.java)
-            val userName = json.get("userName")?.asString ?: return null
-            val userId = json.get("userId")?.asString ?: return null
-            return Pair(userName, userId)
+            if (!json.has("userName") || !json.has("userId")) return null
+            return json
         }
     }
 
     private suspend fun fetchCompletedMsUids(msUserId: String): Set<String> {
-        val token = MicrosoftCookieManager.getDocsToken(context) ?: return emptySet()
-        val cookies = MicrosoftCookieManager.getCookieHeader(context)
+        val token = getMicrosoftDocsToken() ?: return emptySet()
+        val cookies = getMicrosoftCookieHeader()
         val url = "https://learn.microsoft.com/api/achievements/user/$msUserId?locale=en-gb"
         Log.d(TAG, "Fetching achievements from: $url")
         
@@ -184,7 +224,200 @@ class CSharpCertCompleter(private val context: Context) {
         }
     }
 
-    private suspend fun completeFccChallenges(progress: (Int, Int) -> Unit) {
+    private suspend fun fetchSharedTranscriptId(): String? {
+        val token = getMicrosoftDocsToken() ?: throw Exception("MS_401")
+        val cookies = getMicrosoftCookieHeader()
+        val request = buildMicrosoftApiRequest(
+            url = "https://learn.microsoft.com/api/profiles/transcript/share?locale=en-gb",
+            token = token,
+            cookies = cookies
+        ).get().build()
+
+        client.newCall(request).execute().use { response ->
+            if (response.code == 401) throw Exception("MS_401")
+            if (!response.isSuccessful) {
+                throw Exception("Failed to read Microsoft transcript share status: ${response.code}")
+            }
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) return null
+            val json = gson.fromJson(body, JsonObject::class.java)
+            return json.get("transcriptId")?.asString?.takeIf { it.isNotBlank() }
+        }
+    }
+
+    private suspend fun createFreshTranscriptUrl(msUserName: String, existingTranscriptId: String?): String {
+        val token = getMicrosoftDocsToken() ?: throw Exception("MS_401")
+        val cookies = getMicrosoftCookieHeader()
+
+        deleteSharedTranscript(existingTranscriptId)
+
+        val createRequest = buildMicrosoftApiRequest(
+            url = "https://learn.microsoft.com/api/profiles/transcript/share?locale=en-gb",
+            token = token,
+            cookies = cookies
+        ).post("".toRequestBody(null)).build()
+
+        val createdTranscriptId = client.newCall(createRequest).execute().use { response ->
+            if (response.code == 401) throw Exception("MS_401")
+            if (!response.isSuccessful) {
+                throw Exception("Failed to create Microsoft transcript link: ${response.code}")
+            }
+            val body = response.body?.string().orEmpty()
+            val json = gson.fromJson(body, JsonObject::class.java)
+            json.get("transcriptId")?.asString?.takeIf { it.isNotBlank() }
+        } ?: throw Exception("Microsoft did not return a transcript ID.")
+
+        val confirmedTranscriptId = fetchSharedTranscriptId()
+        if (confirmedTranscriptId != createdTranscriptId) {
+            Log.w(TAG, "Transcript share confirmation mismatch. Created=$createdTranscriptId Confirmed=$confirmedTranscriptId")
+        }
+
+        return "https://learn.microsoft.com/en-gb/users/$msUserName/transcript/$createdTranscriptId"
+    }
+
+    private suspend fun deleteSharedTranscript(existingTranscriptId: String?) {
+        if (existingTranscriptId == null) return
+
+        val token = getMicrosoftDocsToken() ?: throw Exception("MS_401")
+        val cookies = getMicrosoftCookieHeader()
+        val deleteRequest = buildMicrosoftApiRequest(
+            url = "https://learn.microsoft.com/api/profiles/transcript/share?locale=en-gb",
+            token = token,
+            cookies = cookies
+        ).delete().build()
+
+        client.newCall(deleteRequest).execute().use { response ->
+            if (response.code == 401) throw Exception("MS_401")
+            if (response.code != 204 && response.code != 404) {
+                throw Exception("Failed to delete Microsoft transcript link: ${response.code}")
+            }
+        }
+    }
+
+    private suspend fun updateMicrosoftUserName(profile: JsonObject, currentUserName: String): String {
+        val token = getMicrosoftDocsToken() ?: throw Exception("MS_401")
+        val cookies = getMicrosoftCookieHeader()
+        var lastError: String? = null
+
+        repeat(3) {
+            val newUserName = generateMicrosoftUserName(currentUserName)
+            val body = gson.fromJson(profile.toString(), JsonObject::class.java).apply {
+                addProperty("userName", newUserName)
+            }
+            val request = buildMicrosoftApiRequest(
+                url = "https://learn.microsoft.com/api/profiles/$currentUserName",
+                token = token,
+                cookies = cookies
+            )
+                .header("Content-Type", "application/json")
+                .put(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                if (response.code == 401) throw Exception("MS_401")
+                if (response.isSuccessful) {
+                    val updatedProfile = gson.fromJson(responseBody, JsonObject::class.java)
+                    return updatedProfile.get("userName")?.asString?.takeIf { it.isNotBlank() }
+                        ?: newUserName
+                }
+                lastError = "${response.code}: $responseBody"
+            }
+        }
+
+        throw Exception("Failed to change Microsoft Learn username. Last error: ${lastError ?: "unknown"}")
+    }
+
+    private fun generateMicrosoftUserName(currentUserName: String): String {
+        val sanitized = currentUserName
+            .lowercase()
+            .filter { it.isLetterOrDigit() || it == '-' }
+            .trim('-')
+            .ifBlank { "learn-user" }
+
+        val match = Regex("^(.*?)-(\\d+)$").matchEntire(sanitized)
+        val existingSuffix = match?.groupValues?.get(2)
+        val suffix = if (existingSuffix == null) {
+            Random.nextInt(10000, 100000).toString()
+        } else {
+            existingSuffix + Random.nextInt(1000, 10000)
+        }
+        val base = (match?.groupValues?.get(1) ?: sanitized)
+            .trim('-')
+            .take((30 - suffix.length - 1).coerceAtLeast(8))
+            .ifBlank { "learn-user" }
+        return "$base-$suffix"
+    }
+
+    private suspend fun linkTranscriptToFreeCodeCamp(transcriptUrl: String): String {
+        FccCookieManager.syncCookies(context)
+        val body = JsonObject().apply {
+            addProperty("msTranscriptUrl", transcriptUrl)
+        }
+
+        retryFccCall {
+            val cookies = FccCookieManager.getCookieHeader(context)
+            val csrfToken = getFccCsrfToken() ?: throw Exception("FCC_401")
+
+            val request = Request.Builder()
+                .url("https://api.freecodecamp.org/user/ms-username")
+                .header("Cookie", cookies)
+                .header("Csrf-Token", csrfToken)
+                .header("Content-Type", "application/json")
+                .header("Origin", "https://www.freecodecamp.org")
+                .header("Referer", "https://www.freecodecamp.org/learn/foundational-c-sharp-with-microsoft")
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute()
+        }.use { response ->
+            val responseBody = response.body?.string().orEmpty()
+            if (response.code == 401 || response.code == 403) throw Exception("FCC_401")
+            if (response.code == 404 && responseBody.contains("flash.ms.transcript.link-err-2")) {
+                throw TranscriptRejectedException("FreeCodeCamp rejected the Microsoft transcript link.")
+            }
+            if (!response.isSuccessful) {
+                throw Exception("Failed to link transcript to FreeCodeCamp: ${response.code}")
+            }
+
+            val json = gson.fromJson(responseBody, JsonObject::class.java)
+            return json.get("msUsername")?.asString?.takeIf { it.isNotBlank() }
+                ?: "Microsoft Learn"
+        }
+    }
+
+    private fun buildMicrosoftApiRequest(url: String, token: String, cookies: String): Request.Builder {
+        return Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $token")
+            .header("Cookie", cookies)
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Origin", "https://learn.microsoft.com")
+            .header("Referer", "https://learn.microsoft.com/en-gb/users/me/settings")
+            .header("User-Agent", USER_AGENT)
+    }
+
+    private fun getMicrosoftDocsToken(): String? {
+        return MicrosoftCookieManager.getCSharpDocsToken(context)
+            ?: MicrosoftCookieManager.getDocsToken(context)
+    }
+
+    private fun getMicrosoftCookieHeader(): String {
+        val csharpCookies = MicrosoftCookieManager.getCSharpCookieHeader(context)
+        return csharpCookies.ifBlank { MicrosoftCookieManager.getCookieHeader(context) }
+    }
+
+    private fun getFccCsrfToken(): String? {
+        return FccCookieManager.getCookie(context, "csrf_token")
+            ?: FccCookieManager.getCookie(context, "_csrf")
+    }
+
+    private suspend fun completeFccChallenges(
+        progress: (Int, Int) -> Unit,
+        detail: (String, Boolean) -> Unit
+    ) {
         val challengesUrl = "https://www.freecodecamp.org/page-data/learn/foundational-c-sharp-with-microsoft/page-data.json"
         val request = Request.Builder()
             .url(challengesUrl)
@@ -227,40 +460,56 @@ class CSharpCertCompleter(private val context: Context) {
                     val id = challenge.get("id").asString
                     val type = challenge.get("challengeType").asInt
                     val title = challenge.get("title")?.asString ?: "Unknown"
-                    
-                    val url = if (type == 18) {
-                        "https://api.freecodecamp.org/ms-trophy-challenge-completed"
-                    } else {
-                        "https://api.freecodecamp.org/encoded/modern-challenge-completed"
-                    }
+                    try {
+                        detail("Current challenge: $title", false)
 
-                    val body = JsonObject()
-                    body.addProperty("id", id)
-                    body.addProperty("challengeType", type)
+                        val url = if (type == 18) {
+                            "https://api.freecodecamp.org/ms-trophy-challenge-completed"
+                        } else {
+                            "https://api.freecodecamp.org/encoded/modern-challenge-completed"
+                        }
 
-                    retryFccCall {
-                        val cookies = FccCookieManager.getCookieHeader(context)
-                        val csrfToken = FccCookieManager.getCookie(context, "csrf_token") ?: throw Exception("FCC_401")
-                        
-                        val req = Request.Builder()
-                            .url(url)
-                            .header("Cookie", cookies)
-                            .header("Csrf-Token", csrfToken)
-                            .header("Content-Type", "application/json")
-                            .header("Origin", "https://www.freecodecamp.org")
-                            .header("Referer", "https://www.freecodecamp.org/")
-                            .header("User-Agent", USER_AGENT)
-                            .header("Accept", "*/*")
-                            .post(body.toString().toRequestBody("application/json".toMediaType()))
-                            .build()
-                        
-                        client.newCall(req).execute()
-                    }.use { resp ->
-                        if (resp.code == 401 || resp.code == 403) throw Exception("FCC_401")
-                    }
-                    synchronized(this@CSharpCertCompleter) {
-                        completed++
-                        progress(completed, total)
+                        val body = JsonObject()
+                        body.addProperty("id", id)
+                        body.addProperty("challengeType", type)
+                        val referer = if (type == 18) {
+                            val slug = challenge.getAsJsonObject("fields")?.get("slug")?.asString
+                                ?: "/learn/foundational-c-sharp-with-microsoft"
+                            "https://www.freecodecamp.org$slug"
+                        } else {
+                            "https://www.freecodecamp.org/"
+                        }
+
+                        retryFccCall {
+                            val cookies = FccCookieManager.getCookieHeader(context)
+                            val csrfToken = getFccCsrfToken() ?: throw Exception("FCC_401")
+                            
+                            val req = Request.Builder()
+                                .url(url)
+                                .header("Cookie", cookies)
+                                .header("Csrf-Token", csrfToken)
+                                .header("Content-Type", "application/json")
+                                .header("Origin", "https://www.freecodecamp.org")
+                                .header("Referer", referer)
+                                .header("User-Agent", USER_AGENT)
+                                .header("Accept", "*/*")
+                                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                                .build()
+                            
+                            client.newCall(req).execute()
+                        }.use { resp ->
+                            if (resp.code == 401 || resp.code == 403) throw Exception("FCC_401")
+                            if (!resp.isSuccessful) {
+                                throw Exception("Challenge '$title' failed with code ${resp.code}")
+                            }
+                        }
+                        synchronized(this@CSharpCertCompleter) {
+                            completed++
+                            progress(completed, total)
+                        }
+                    } catch (e: Exception) {
+                        detail("Failed challenge: $title (${e.message ?: "unknown error"})", true)
+                        throw e
                     }
                 }
             }.awaitAll()
@@ -299,7 +548,7 @@ class CSharpCertCompleter(private val context: Context) {
         
         retryFccCall {
             val cookies = FccCookieManager.getCookieHeader(context)
-            val csrfToken = FccCookieManager.getCookie(context, "csrf_token") ?: throw Exception("FCC_401")
+            val csrfToken = getFccCsrfToken() ?: throw Exception("FCC_401")
             
             val request = Request.Builder()
                 .url("https://api.freecodecamp.org/exam-challenge-completed")

@@ -12,10 +12,13 @@
     <string name="no_practicals">No practicals found</string>
     <string name="no_records">No attendance records yet.\nTap the refresh button below.</string>
     <string name="menu_notifications">Notifications</string>
-    <string name="menu_update">Check for Updates</string>
+    <string name="menu_update">Update</string>
     <string name="menu_logout">Sign Out</string>
     <string name="menu_share">Share App</string>
     <string name="msg_link_copied">App link copied to clipboard</string>
+    <string name="paste_text">Paste</string>
+    <string name="copy_text">Copy</string>
+    <string name="text_selection_more">More…</string>
 
     <string name="shortcut_timetable_short">Timetable</string>
     <string name="shortcut_timetable_long">View Timetable</string>

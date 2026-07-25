@@ -2,7 +2,6 @@ package com.mit.attendance.agent
 
 import android.content.Context
 import android.util.Log
-import com.mit.attendance.service.ChatGptWebView
 import com.mit.attendance.storage.OutputDirectoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,7 +14,7 @@ private const val TAG = "MetaAgent"
 // ─────────────────────────────────────────
 class MetaAgent(
     private val context: Context,
-    private val webView: ChatGptWebView,
+    private val session: QwenAgentSession,
     private val storageBaseDir: String
 ) {
     private val history = mutableListOf<Pair<String, String>>()
@@ -28,20 +27,20 @@ class MetaAgent(
         val startTime = System.currentTimeMillis()
         Log.d(TAG, "⏱️ startSession: starting...")
         try {
-            webView.refresh()
-            webView.awaitReady()
+            session.refresh()
+            session.awaitReady()
             history.clear()
             sessionStarted = true
             val duration = System.currentTimeMillis() - startTime
             Log.d(TAG, "✅ startSession: ready in ${duration}ms")
-            onReady("Hello! I'm your AI Agent builder. Type 'list all my remaining tasks' to see what's pending in chaipatti/tasks.")
+            onReady("Hello! I'm your Qwen agent builder. Type 'list all my remaining tasks' to see what's pending in chaipatti/tasks.")
         } catch (e: Exception) {
             Log.e(TAG, "❌ startSession: failed after ${System.currentTimeMillis() - startTime}ms: ${e.message}")
             onError("Meta-Agent failed to start: ${e.message}")
         }
     }
 
-    suspend fun chat(userMessage: String): ChatResult = withContext(Dispatchers.Main) {
+    suspend fun chat(userMessage: String): ChatResult = withContext(Dispatchers.IO) {
         if (!sessionStarted) error("Call startSession() first")
 
         val chatStartTime = System.currentTimeMillis()
@@ -51,7 +50,7 @@ class MetaAgent(
 
         val sendStartTime = System.currentTimeMillis()
         var currentReply = try {
-            webView.send(prompt)
+            session.send(prompt)
         } catch (e: Exception) {
             Log.e(TAG, "❌ chat: Initial send failed after ${System.currentTimeMillis() - sendStartTime}ms: ${e.message}")
             return@withContext ChatResult("Error: ${e.message}", false, null)
@@ -92,7 +91,7 @@ class MetaAgent(
             val systemMsg = "SYSTEM: $fsResult"
 
             val cmdSendStartTime = System.currentTimeMillis()
-            val next = try { webView.send(systemMsg) }
+            val next = try { session.send(systemMsg) }
             catch (e: Exception) {
                 Log.e(TAG, "❌ chat: Command loop send failed after ${System.currentTimeMillis() - cmdSendStartTime}ms: ${e.message}")
                 break@commandLoop
@@ -163,7 +162,7 @@ Please output ONLY the corrected JSON object (no markdown fences, no explanation
             """.trimIndent()
 
             val repairSendStartTime = System.currentTimeMillis()
-            val repairReply = try { webView.send(repairPrompt) }
+            val repairReply = try { session.send(repairPrompt) }
             catch (ex: Exception) { 
                 Log.e(TAG, "❌ processReplyWithRepair: Repair send failed after ${System.currentTimeMillis() - repairSendStartTime}ms")
                 return ChatResult(reply + "\n\n⚠️ Config JSON malformed.", false, null) 

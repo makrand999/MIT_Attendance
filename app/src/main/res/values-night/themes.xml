@@ -3,12 +3,14 @@
     <style name="Theme.MITAttendance" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Main colors -->
         <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">#000000</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/accent</item>
+        <item name="android:fontFamily">@font/nunito</item>
+        <item name="fontFamily">@font/nunito</item>
 
         <!-- Background and Surface -->
         <item name="android:colorBackground">@color/background</item>
-        <item name="android:windowBackground">@color/background</item>
+        <item name="android:windowBackground">@drawable/bg_medkit_screen</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/text_primary</item>
 
@@ -17,8 +19,10 @@
         <item name="android:textColorSecondary">@color/text_secondary</item>
 
         <!-- Status and Nav Bars -->
-        <item name="android:statusBarColor">#000000</item>
-        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:statusBarColor">@color/medkit_cream</item>
+        <item name="android:navigationBarColor">@color/medkit_cream</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
 
         <!-- Toolbar / Popup -->
         <item name="actionBarPopupTheme">@style/AppPopupTheme</item>

@@ -1,7 +1,6 @@
 package com.mit.attendance.agent
 
 import android.util.Log
-import com.mit.attendance.service.ChatGptWebView
 
 private const val TAG = "OutputAnalyzer"
 
@@ -20,7 +19,7 @@ private const val TAG = "OutputAnalyzer"
 //  The result is a structured AnalysisReport that the UI can display
 //  as a human-readable summary card after each task completes.
 // ─────────────────────────────────────────
-class OutputAnalyzer(private val webView: ChatGptWebView) {
+class OutputAnalyzer(private val session: QwenAgentSession) {
 
     // ── ANALYSIS RESULT ───────────────────────────────────────────
     data class AnalysisReport(
@@ -74,7 +73,7 @@ class OutputAnalyzer(private val webView: ChatGptWebView) {
     // ── ANALYZE ───────────────────────────────────────────────────
     /**
      * Sends the finished output + original requirement to a fresh
-     * ChatGPT session and asks for a structured analysis.
+     * Qwen session and asks for a structured analysis.
      *
      * [customPrompt] — optional override from AgentConfig.outputAnalysisPrompt.
      * If blank, the default analysis prompt is used.
@@ -102,7 +101,7 @@ class OutputAnalyzer(private val webView: ChatGptWebView) {
 
         val sendStartTime = System.currentTimeMillis()
         val reply = try {
-            webView.send(prompt)
+            session.send(prompt)
         } catch (e: Exception) {
             Log.e(TAG, "❌ analyze: Send failed after ${System.currentTimeMillis() - sendStartTime}ms: ${e.message}")
             return null

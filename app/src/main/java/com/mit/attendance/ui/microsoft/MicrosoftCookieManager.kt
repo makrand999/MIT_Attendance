@@ -18,6 +18,7 @@ data class MicrosoftCookie(
 object MicrosoftCookieManager {
     private const val TAG = "MicrosoftCookieManager"
     private const val COOKIE_FILE_NAME = "microsoft_cookies.json"
+    private const val CSHARP_COOKIE_FILE_NAME = "microsoft_csharp_cookies.json"
     private const val TARGET_DOMAIN = "learn.microsoft.com"
     private const val TARGET_URL = "https://learn.microsoft.com"
 
@@ -25,6 +26,7 @@ object MicrosoftCookieManager {
     private val gson = Gson()
 
     private var cookieCache: MutableMap<String, MicrosoftCookie>? = null
+    private var csharpCookieCache: MutableMap<String, MicrosoftCookie>? = null
 
     suspend fun injectCookies(context: Context) {
         val cookies = getCachedCookies(context)
@@ -101,6 +103,36 @@ object MicrosoftCookieManager {
         return cookies.joinToString("; ") { "${it.name}=${it.value}" }
     }
 
+    fun isCSharpDefaultPresent(context: Context): Boolean {
+        return getCSharpDocsToken(context) != null
+    }
+
+    fun getCSharpDocsToken(context: Context): String? {
+        val cookies = getCSharpCookiesSync(context)
+        return cookies.find { it.name == "DocsToken" }?.value?.takeIf { it.isNotEmpty() }
+    }
+
+    fun getCSharpCookieHeader(context: Context): String {
+        val cookies = getCSharpCookiesSync(context)
+        return cookies.joinToString("; ") { "${it.name}=${it.value}" }
+    }
+
+    suspend fun importCSharpCookies(context: Context, rawJson: String): Int = withContext(Dispatchers.IO) {
+        val type = object : TypeToken<List<MicrosoftCookie>>() {}.type
+        val cookies = gson.fromJson<List<MicrosoftCookie>>(rawJson, type)
+            ?.filter { it.name.isNotBlank() && it.value.isNotBlank() && it.domain.isNotBlank() }
+            ?: emptyList()
+
+        if (cookies.none { it.name == "DocsToken" }) {
+            throw IllegalArgumentException("Selected cookie JSON does not contain DocsToken.")
+        }
+
+        val file = File(context.filesDir, CSHARP_COOKIE_FILE_NAME)
+        file.writeText(gson.toJson(cookies))
+        csharpCookieCache = cookies.associateBy { it.name }.toMutableMap()
+        cookies.size
+    }
+
     private fun getCachedCookiesSync(context: Context): List<MicrosoftCookie> {
         cookieCache?.let { return it.values.toList() }
         
@@ -118,6 +150,28 @@ object MicrosoftCookieManager {
         
         cookieCache = stored.associateBy { it.name }.toMutableMap()
         return stored
+    }
+
+    private fun getCSharpCookiesSync(context: Context): List<MicrosoftCookie> {
+        csharpCookieCache?.let { return it.values.toList() }
+
+        val stored = readCookieFile(context, CSHARP_COOKIE_FILE_NAME)
+        csharpCookieCache = stored.associateBy { it.name }.toMutableMap()
+        return stored
+    }
+
+    private fun readCookieFile(context: Context, fileName: String): List<MicrosoftCookie> {
+        return try {
+            val file = File(context.filesDir, fileName)
+            if (!file.exists()) emptyList()
+            else {
+                val json = file.readText()
+                val type = object : TypeToken<List<MicrosoftCookie>>() {}.type
+                gson.fromJson<List<MicrosoftCookie>>(json, type) ?: emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private suspend fun getCachedCookies(context: Context): List<MicrosoftCookie> = withContext(Dispatchers.IO) {

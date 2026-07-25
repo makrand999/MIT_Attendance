@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-files-path name="my_files" path="." />
+    <external-files-path name="practical_pdfs" path="practical_pdfs/" />
+    <external-path name="external_files" path="." />
 </paths>

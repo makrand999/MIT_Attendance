@@ -9,9 +9,15 @@ interface PracticalDraftDao {
     @Query("SELECT * FROM practical_drafts WHERE practicalId = :id")
     suspend fun getDraft(id: Int): PracticalDraft?
 
+    @Query("SELECT * FROM practical_drafts")
+    suspend fun getAllDrafts(): List<PracticalDraft>
+
     @Upsert
     suspend fun upsertDraft(draft: PracticalDraft)
 
     @Query("DELETE FROM practical_drafts WHERE practicalId = :id")
     suspend fun deleteDraft(id: Int)
+
+    @Query("DELETE FROM practical_drafts")
+    suspend fun deleteAll()
 }

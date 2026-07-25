@@ -1,13 +1,13 @@
 package com.mit.attendance.data.api
 
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.mit.attendance.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-
 class PracticalApiService(private val baseUrl: String = "http://10.10.30.203") {
 
     private val gson = Gson()
@@ -68,8 +68,40 @@ class PracticalApiService(private val baseUrl: String = "http://10.10.30.203") {
                     .build()
                 val resp = client.newCall(req).execute()
                 val text = resp.body?.string() ?: ""
+                ensureActiveSession(resp, text, "Subjects")
                 if (!resp.isSuccessful) error("Subjects failed (${resp.code}): $text")
                 gson.fromJson(text, StudentSubjectsResponse::class.java)
+            }
+        }
+
+    suspend fun checkServerAvailability(): Result<PracticalServerStatus> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val req = Request.Builder()
+                    .url("$baseUrl/")
+                    .get()
+                    .build()
+                val resp = client.newCall(req).execute()
+                resp.close()
+                when {
+                    resp.isSuccessful || resp.code in listOf(301, 302, 401, 403, 404, 405) ->
+                        PracticalServerStatus.AVAILABLE
+                    resp.code in listOf(502, 503, 504, 521, 522) ->
+                        PracticalServerStatus.SERVER_DOWN
+                    else ->
+                        PracticalServerStatus.UNKNOWN
+                }
+            }.recover {
+                val lower = it.message?.lowercase().orEmpty()
+                when {
+                    lower.contains("unable to resolve host") ||
+                        lower.contains("failed to connect") ||
+                        lower.contains("network is unreachable") ||
+                        lower.contains("connection refused") ||
+                        lower.contains("timeout") ||
+                        lower.contains("timed out") -> PracticalServerStatus.WIFI_REQUIRED
+                    else -> PracticalServerStatus.UNKNOWN
+                }
             }
         }
 
@@ -87,55 +119,157 @@ class PracticalApiService(private val baseUrl: String = "http://10.10.30.203") {
                 .build()
             val resp = client.newCall(req).execute()
             val text = resp.body?.string() ?: ""
+            ensureActiveSession(resp, text, "Practicals")
             if (!resp.isSuccessful) error("Practicals failed (${resp.code}): $text")
             gson.fromJson(text, PracticalsResponse::class.java)
         }
     }
 
-    // ── Submit ─────────────────────────────────────────────────────────────
+    suspend fun getStudentPracticalDraft(practicalId: Int): Result<PracticalRemoteEntry?> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val req = Request.Builder()
+                    .url("$baseUrl/lascore/practical/get-student-draft/$practicalId")
+                    .get()
+                    .build()
+                val resp = client.newCall(req).execute()
+                val text = resp.body?.string() ?: ""
+                if (resp.code == 404) return@runCatching null
+                ensureActiveSession(resp, text, "Draft fetch")
+                if (!resp.isSuccessful) error("Draft fetch failed (${resp.code}): $text")
+                parseRemoteEntry(text, "draft")
+            }
+        }
 
-    suspend fun submitPractical(
-        subjectId: Int,
-        divisionId: Int,
-        practicalId: Int,
-        practicalNumber: Int,
-        language: String,
-        theory: String,
-        conclusion: String
+    suspend fun getStudentPracticalSubmission(practicalId: Int): Result<PracticalRemoteEntry?> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val req = Request.Builder()
+                    .url("$baseUrl/lascore/practical/submission/student-view/$practicalId")
+                    .get()
+                    .build()
+                val resp = client.newCall(req).execute()
+                val text = resp.body?.string() ?: ""
+                if (resp.code == 404) return@runCatching null
+                ensureActiveSession(resp, text, "Submission fetch")
+                if (!resp.isSuccessful) error("Submission fetch failed (${resp.code}): $text")
+                parseRemoteEntry(text, "submission")
+            }
+        }
+
+    // ── Draft + Submit ─────────────────────────────────────────────────────
+
+    suspend fun saveStudentPracticalDraft(
+        payload: PracticalEditorPayload,
+        attachment: PracticalAttachment? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val payload = PracticalSubmitPayload(
-                practical  = practicalId,
-                division   = divisionId,
-                subjects   = subjectId,
-                language   = language,
-                theory     = theory,
-                code       = "",
-                output     = "",
-                error      = "",
-                conclusion = conclusion
-            )
-            val payloadJson = gson.toJson(payload)
-            val body = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("payload", null,
-                    payloadJson.toRequestBody("application/json".toMediaType()))
-                .build()
+            val body = buildMultipartBody(gson.toJson(payload), attachment)
 
             val req = Request.Builder()
                 .url("$baseUrl/lascore/practical/save-student-pract")
                 .post(body)
-                .header("Referer",
-                    "$baseUrl/dashboard/studentPracticalView/$subjectId/$practicalNumber")
                 .build()
             val resp = client.newCall(req).execute()
             val text = resp.body?.string() ?: ""
-            if (resp.code !in 200..201) error("Submit failed (${resp.code}): $text")
+            ensureActiveSession(resp, text, "Draft save")
+            if (resp.code !in 200..201) error("Draft save failed (${resp.code}): $text")
             text
+        }
+    }
+
+    suspend fun createStudentPracticalSubmission(
+        payload: PracticalSubmissionPayload,
+        attachment: PracticalAttachment? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = buildMultipartBody(gson.toJson(payload), attachment)
+            val req = Request.Builder()
+                .url("$baseUrl/lascore/practical/submission/create")
+                .post(body)
+                .build()
+            val resp = client.newCall(req).execute()
+            val text = resp.body?.string() ?: ""
+            ensureActiveSession(resp, text, "Submission")
+            if (resp.code !in 200..201) error("Submission failed (${resp.code}): $text")
+            text
+        }
+    }
+
+    suspend fun updateStudentPracticalSubmission(
+        submissionId: Int,
+        payload: PracticalSubmissionUpdatePayload,
+        attachment: PracticalAttachment? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = buildMultipartBody(gson.toJson(payload), attachment)
+            val req = Request.Builder()
+                .url("$baseUrl/lascore/practical/submission/update/$submissionId")
+                .post(body)
+                .build()
+            val resp = client.newCall(req).execute()
+            val text = resp.body?.string() ?: ""
+            ensureActiveSession(resp, text, "Submission update")
+            if (resp.code !in 200..201) error("Submission update failed (${resp.code}): $text")
+            text
+        }
+    }
+
+    private fun buildMultipartBody(payloadJson: String, attachment: PracticalAttachment?): MultipartBody {
+        val builder = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "payload",
+                null,
+                payloadJson.toRequestBody("application/json".toMediaType())
+            )
+
+        if (attachment != null) {
+            builder.addFormDataPart(
+                "practical_doc",
+                attachment.fileName,
+                attachment.bytes.toRequestBody(attachment.mimeType.toMediaType())
+            )
+        }
+
+        return builder.build()
+    }
+
+    private fun parseRemoteEntry(text: String, envelopeKey: String): PracticalRemoteEntry? {
+        if (text.isBlank()) return null
+        val element = JsonParser.parseString(text)
+        if (!element.isJsonObject) {
+            return null
+        }
+        val obj = element.asJsonObject
+        val nested = obj.get(envelopeKey)
+        return when {
+            nested != null && nested.isJsonObject -> gson.fromJson(nested, PracticalRemoteEntry::class.java)
+            else -> gson.fromJson(obj, PracticalRemoteEntry::class.java)
         }
     }
 
     fun setToken(token: String) {
         authToken = token
+    }
+
+    private fun ensureActiveSession(response: Response, text: String, label: String) {
+        if (response.code in listOf(401, 403, 419) || looksLikeExpiredSession(text)) {
+            error("$label session expired (${response.code}): $text")
+        }
+    }
+
+    private fun looksLikeExpiredSession(text: String): Boolean {
+        val lower = text.lowercase()
+        return (lower.contains("session") && lower.contains("expired")) ||
+            (lower.contains("token") && lower.contains("expired")) ||
+            lower.contains("jwt expired") ||
+            lower.contains("unauthorized") ||
+            lower.contains("unauthenticated") ||
+            lower.contains("invalid token") ||
+            lower.contains("login required") ||
+            lower.contains("please login") ||
+            lower.contains("please log in") ||
+            lower.contains("not logged in")
     }
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="800dp"
+    android:viewportWidth="360"
+    android:viewportHeight="800">
+
+    <path
+        android:fillColor="@color/medkit_cream"
+        android:pathData="M0,0h360v800h-360z" />
+
+    <path
+        android:fillColor="#26FFFFFF"
+        android:pathData="M0,0h360v800h-360z" />
+
+    <path
+        android:fillColor="#142B1E16"
+        android:pathData="M24,78m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M82,60m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M142,84m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M210,52m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M304,94m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M44,190m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M126,216m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M236,198m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M326,248m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M78,338m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M184,326m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M292,372m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M32,476m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M140,512m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M260,492m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M318,592m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M92,650m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M206,688m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0 M304,732m-2,0a2,2 0,1 0,4 0a2,2 0,1 0,-4 0" />
+
+    <path
+        android:fillColor="#22FFB68A"
+        android:pathData="M276,120a54,54 0,1 0,108 0a54,54 0,1 0,-108 0" />
+    <path
+        android:fillColor="#22A8E5C8"
+        android:pathData="M-56,612a72,72 0,1 0,144 0a72,72 0,1 0,-144 0" />
+    <path
+        android:fillColor="#20A6D8FF"
+        android:pathData="M284,604a58,58 0,1 0,116 0a58,58 0,1 0,-116 0" />
+
+</vector>

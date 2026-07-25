@@ -2,9 +2,6 @@ package com.mit.attendance.agent
 
 import android.content.Context
 import android.util.Log
-import android.view.ViewGroup
-import android.widget.FrameLayout
-import com.mit.attendance.service.ChatGptWebView
 import kotlinx.coroutines.*
 
 private const val TAG = "AgentOrchestrator"
@@ -14,11 +11,10 @@ private const val TAG = "AgentOrchestrator"
 // ─────────────────────────────────────────
 class AgentOrchestrator(
     private val context: Context,
-    private val hiddenContainer: FrameLayout,
     private val scope: CoroutineScope
 ) {
-    private val webView   = ChatGptWebView(context)
-    private val metaAgent = MetaAgent(context, webView, storageBaseDir = context.filesDir.absolutePath)
+    private val session   = QwenAgentSession(context)
+    private val metaAgent = MetaAgent(context, session, storageBaseDir = context.filesDir.absolutePath)
 
     private var workerAgent: WorkerAgent? = null
     private var workerJob:   Job?         = null
@@ -28,43 +24,32 @@ class AgentOrchestrator(
         private set
 
     fun start(
-        loginManager: com.mit.attendance.auth.ChatGptLoginManager,
         onMetaReady: (greeting: String) -> Unit,
         onMetaError: (error: String) -> Unit
     ) {
         Log.d(TAG, "🚀 start: Initializing orchestrator...")
-        if (webView.webView.parent == null) {
-            val lp = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            hiddenContainer.addView(webView.webView, 0, lp)
-        }
-        webView.init(
-            loginManager = loginManager,
-            onReady = {
-                scope.launch {
-                    Log.d(TAG, "⏱️ start: WebView ready, starting Meta session...")
-                    state = State.META
-                    metaAgent.startSession(
-                        onReady = { greeting -> 
-                            Log.d(TAG, "✅ start: Meta session ready")
-                            onMetaReady(greeting) 
-                        },
-                        onError = { err ->
-                            Log.e(TAG, "❌ start: Meta session error: $err")
-                            state = State.IDLE
-                            onMetaError(err)
-                        }
-                    )
-                }
-            },
-            onError = { err ->
-                Log.e(TAG, "❌ start: WebView init error: $err")
+        scope.launch {
+            try {
+                session.init()
+                Log.d(TAG, "⏱️ start: Qwen session ready, starting Meta session...")
+                state = State.META
+                metaAgent.startSession(
+                    onReady = { greeting ->
+                        Log.d(TAG, "✅ start: Meta session ready")
+                        onMetaReady(greeting)
+                    },
+                    onError = { err ->
+                        Log.e(TAG, "❌ start: Meta session error: $err")
+                        state = State.IDLE
+                        onMetaError(err)
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ start: Qwen init error: ${e.message}")
                 state = State.IDLE
-                onMetaError(err)
+                onMetaError(e.message ?: "Failed to connect to Qwen")
             }
-        )
+        }
     }
 
     fun userMessage(message: String, onResult: (MetaAgent.ChatResult) -> Unit) {
@@ -88,7 +73,7 @@ class AgentOrchestrator(
         }
 
         Log.d(TAG, "🚀 startWorker: Launching WorkerAgent for '${config.taskDescription}'")
-        val agent = WorkerAgent(context, webView)
+        val agent = WorkerAgent(context, session)
         workerAgent = agent
         state       = State.WORKING
 
@@ -144,15 +129,15 @@ class AgentOrchestrator(
     }
 
     fun setPaused(paused: Boolean) {
-        webView.isPaused = paused
+        session.isPaused = paused
     }
 
-    fun isPaused(): Boolean = webView.isPaused
+    fun isPaused(): Boolean = session.isPaused
 
     fun destroy() {
         Log.d(TAG, "🗑️ destroy: Cleaning up orchestrator")
         cancelWorker()
-        webView.destroy()
+        session.destroy()
         state = State.IDLE
     }
 }

@@ -5,32 +5,49 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mit.attendance.BuildConfig
+import com.mit.attendance.storage.OutputDirectoryManager
+import com.mit.attendance.ui.subjects.NotesActivity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import okhttp3.Request
-import androidx.core.net.toUri
+import java.io.File
+import java.io.FileOutputStream
 
 object UpdateChecker {
     private const val GITHUB_API_URL =
         "https://api.github.com/repos/makrand999/MIT_Attendance/releases/latest"
 
     private val json = Json { ignoreUnknownKeys = true }
+    
+    private val downloadClient = OkHttpClient.Builder()
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
 
-    suspend fun checkForUpdates(context: Context) {
+    suspend fun checkForUpdates(context: Context, isManualCheck: Boolean = false) {
         withContext(Dispatchers.IO) {
             try {
-                val client = HttpClientHolder.client
                 val request = Request.Builder()
                     .url(GITHUB_API_URL)
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
 
-                val responseBody = client.newCall(request).execute().use { response ->
+                val responseBody = downloadClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         Log.e("UpdateChecker", "GitHub API request failed: ${response.code}")
+                        if (isManualCheck) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Failed to check for updates", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                         return@withContext
                     }
                     response.body?.string()
@@ -52,59 +69,111 @@ object UpdateChecker {
 
                 val currentVersion = BuildConfig.VERSION_CODE
 
-                if (remoteVersion > currentVersion) {
-                    val apkUrl = release.assets
-                        .firstOrNull { it.name.endsWith(".apk") }
-                        ?.browserDownloadUrl
+                withContext(Dispatchers.Main) {
+                    if (remoteVersion > currentVersion) {
+                        val apkUrl = release.assets
+                            .firstOrNull { it.name.endsWith(".apk") }
+                            ?.browserDownloadUrl
 
-                    Log.d("UpdateChecker", "New version found: ${release.tagName}")
-                    
-                    withContext(Dispatchers.Main) {
+                        Log.d("UpdateChecker", "New version found: ${release.tagName}")
                         showUpdateDialog(context, release, apkUrl)
+                    } else if (isManualCheck) {
+                        MaterialAlertDialogBuilder(context)
+                            .setTitle("Update")
+                            .setMessage("App is up to date (v${BuildConfig.VERSION_NAME})")
+                            .setPositiveButton("Manage Downloads") { _, _ ->
+                                val intent = Intent(context, NotesActivity::class.java).apply {
+                                    putExtra(NotesActivity.EXTRA_TYPE, NotesActivity.TYPE_UPDATE)
+                                }
+                                context.startActivity(intent)
+                            }
+                            .setNegativeButton("OK", null)
+                            .show()
                     }
                 }
             } catch (e: Exception) {
                 Log.e("UpdateChecker", "Update check failed", e)
+                if (isManualCheck) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Update check failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }
 
     private fun showUpdateDialog(context: Context, release: GithubRelease, apkUrl: String?) {
-        // We need an Activity context to show a MaterialAlertDialog
-        if (context !is Activity) {
-            Log.e("UpdateChecker", "Cannot show dialog: context is not an Activity")
-            return
-        }
-        
-        if (context.isFinishing || context.isDestroyed) return
+        if (context !is Activity || context.isFinishing || context.isDestroyed) return
+
+        val tagName = release.tagName
+        val versionFolder = OutputDirectoryManager.getVersionFolder(context, tagName)
+        val destination = File(versionFolder, "MIT_Attendance.apk")
+        val isDownloaded = destination.exists()
 
         MaterialAlertDialogBuilder(context)
             .setTitle("Update Available — ${release.name}")
             .setMessage(release.body)
-            .setPositiveButton("Download") { _, _ ->
-                val url = apkUrl ?: "https://github.com/makrand999/MIT_Attendance/releases/latest"
-                try {
-                    // To ensure it opens in an external browser and starts the download correctly,
-                    // we use ACTION_VIEW with the explicit category CATEGORY_BROWSABLE.
-                    // This prevents internal app handling and forces a browser choice.
-                    val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
-                        addCategory(Intent.CATEGORY_BROWSABLE)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .setPositiveButton(if (isDownloaded) "View Updates" else "Download Now") { _, _ ->
+                if (isDownloaded) {
+                    val intent = Intent(context, NotesActivity::class.java).apply {
+                        putExtra(NotesActivity.EXTRA_TYPE, NotesActivity.TYPE_UPDATE)
                     }
                     context.startActivity(intent)
-                } catch (e: Exception) {
-                    Log.e("UpdateChecker", "Could not open download link", e)
-                    // Fallback: If no browser is found that can handle the CATEGORY_BROWSABLE,
-                    // try a standard VIEW intent.
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-                    } catch (e2: Exception) {
-                        Log.e("UpdateChecker", "Complete failure to open link", e2)
-                    }
+                } else if (apkUrl != null) {
+                    downloadAndInstallDirectly(context, apkUrl, tagName)
+                } else {
+                    val url = "https://github.com/makrand999/MIT_Attendance/releases/latest"
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
             }
             .setNegativeButton("Later", null)
             .setCancelable(true)
             .show()
+    }
+
+    private fun downloadAndInstallDirectly(context: Context, url: String, tagName: String) {
+        val activity = context as? AppCompatActivity ?: return
+        
+        Toast.makeText(context, "Downloading update...", Toast.LENGTH_LONG).show()
+
+        activity.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val versionFolder = OutputDirectoryManager.getVersionFolder(context, tagName)
+                val destination = File(versionFolder, "MIT_Attendance.apk")
+                val tempFile = File(versionFolder, "MIT_Attendance.apk.tmp")
+                
+                if (tempFile.exists()) tempFile.delete()
+
+                val request = Request.Builder().url(url).build()
+                
+                downloadClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw Exception("Failed to download file: ${response.code}")
+                    
+                    val body = response.body ?: throw Exception("Empty response body")
+                    
+                    FileOutputStream(tempFile).use { output ->
+                        body.byteStream().use { input ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+
+                if (destination.exists()) destination.delete()
+                tempFile.renameTo(destination)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download complete", Toast.LENGTH_SHORT).show()
+                    val intent = Intent(context, NotesActivity::class.java).apply {
+                        putExtra(NotesActivity.EXTRA_TYPE, NotesActivity.TYPE_UPDATE)
+                    }
+                    context.startActivity(intent)
+                }
+            } catch (e: Exception) {
+                Log.e("UpdateChecker", "Download failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 }

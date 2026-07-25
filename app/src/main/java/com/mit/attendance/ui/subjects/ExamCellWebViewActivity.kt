@@ -10,7 +10,6 @@ import android.view.MenuItem
 import android.view.View
 import android.webkit.*
 import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.mit.attendance.R
@@ -81,13 +80,18 @@ class ExamCellWebViewActivity : AppCompatActivity() {
         binding = ActivityErpWebviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Show toolbar and hide custom back button for ExamCell
-        binding.toolbar.visibility = View.VISIBLE
-        binding.btnBack.visibility = View.GONE
+        // Hide toolbar and show floating back button
+        binding.toolbar.visibility = View.GONE
+        binding.btnBack.visibility = View.VISIBLE
+        
+        binding.btnBack.setOnClickListener {
+            finish()
+        }
 
         setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Exam Cell"
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)
+        supportActionBar?.title = ""
+        binding.toolbar.visibility = View.VISIBLE 
 
         prefs = UserPreferences(applicationContext)
 
@@ -115,17 +119,6 @@ class ExamCellWebViewActivity : AppCompatActivity() {
             Log.d(TAG, "Loading login page for manual login")
             binding.webView.loadUrl("https://mitaexamcell.in/Login.aspx")
         }
-
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (binding.webView.canGoBack()) {
-                    binding.webView.goBack()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                }
-            }
-        })
     }
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
@@ -227,7 +220,9 @@ class ExamCellWebViewActivity : AppCompatActivity() {
         try {
             val cookieManager = CookieManager.getInstance()
             withContext(Dispatchers.Main) {
-                cookieManager.removeAllCookies(null)
+                // Persistent Cookie Store: Do NOT remove all cookies globally.
+                // Just ensure we are starting fresh for this specific login if needed, 
+                // but the system CookieManager will manage overlaps.
                 cookieManager.flush()
                 binding.webView.clearCache(true)
             }

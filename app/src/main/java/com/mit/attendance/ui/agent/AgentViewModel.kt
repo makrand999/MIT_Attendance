@@ -1,292 +1,351 @@
 package com.mit.attendance.ui.agent
 
 import android.app.Application
-import android.widget.FrameLayout
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.mit.attendance.agent.*
-import com.mit.attendance.service.ChatGptWebView
+import com.mit.attendance.BuildConfig
+import com.mit.attendance.data.prefs.UserPreferences
 import com.mit.attendance.storage.OutputDirectoryManager
+import com.mit.attendance.agent.AgentRequestAuth
+import com.mit.attendance.ui.subjects.NotesActivity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 
 class AgentViewModel(app: Application) : AndroidViewModel(app) {
 
-    enum class Phase { IDLE, LOADING, CONFIGURING, READY_TO_RUN, RUNNING, DONE }
+    enum class Phase { LOADING, READY, ERROR }
 
-    private val _phase    = MutableStateFlow(Phase.IDLE)
-    private val _chat     = MutableStateFlow<List<ChatMessage>>(emptyList())
-    private val _pipeline = MutableStateFlow<PipelineState?>(null)
-    private val _summary  = MutableStateFlow<WorkerAgent.RunSummary?>(null)
-    private val _error    = MutableStateFlow<String?>(null)
-    private val _resume   = MutableStateFlow<ResumeInfo?>(null)
-    private val _history  = MutableStateFlow<List<OutputDirectoryManager.TaskFolder>>(emptyList())
-    private val _isNewTaskSession = MutableStateFlow(false)
-    private val _isPaused = MutableStateFlow(false)
-    
-    // File Explorer State
-    private val _explorerFiles = MutableStateFlow<List<File>>(emptyList())
-    private val _selectedFileContent = MutableStateFlow<Pair<File, String>?>(null)
-    private val _currentDirectory = MutableStateFlow<File?>(null)
+    private val _phase = MutableStateFlow(Phase.LOADING)
+    val phase = _phase.asStateFlow()
 
-    val phase   = _phase.asStateFlow()
-    val chat    = _chat.asStateFlow()
-    val pipeline= _pipeline.asStateFlow()
-    val summary = _summary.asStateFlow()
-    val error   = _error.asStateFlow()
-    val resume  = _resume.asStateFlow()
-    val history = _history.asStateFlow()
-    val isNewTaskSession = _isNewTaskSession.asStateFlow()
-    val isPaused = _isPaused.asStateFlow()
-    
-    val explorerFiles = _explorerFiles.asStateFlow()
-    val selectedFileContent = _selectedFileContent.asStateFlow()
-    val currentDirectory = _currentDirectory.asStateFlow()
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
 
-    private var orchestrator: AgentOrchestrator? = null
-    private var pendingConfig: AgentConfig? = null
-    private var cachedGreeting: String? = null
+    private val _projects = MutableStateFlow<List<ProjectSummary>>(emptyList())
+    val projects = _projects.asStateFlow()
 
-    fun init(hiddenContainer: FrameLayout, loginManager: com.mit.attendance.auth.ChatGptLoginManager) {
-        if (orchestrator != null) return
-        orchestrator = AgentOrchestrator(getApplication(), hiddenContainer, viewModelScope)
-        _phase.value = Phase.LOADING
-        loadHistory()
-        orchestrator!!.start(
-            loginManager = loginManager,
-            onMetaReady = { greeting ->
-                cachedGreeting = greeting
-                _phase.value = Phase.CONFIGURING
-            },
-            onMetaError = { err -> _error.value = err; _phase.value = Phase.IDLE }
-        )
-    }
+    private val _selectedProject = MutableStateFlow<String?>(null)
+    val selectedProject = _selectedProject.asStateFlow()
 
-    fun togglePause() {
-        orchestrator?.let {
-            val newState = !it.isPaused()
-            it.setPaused(newState)
-            _isPaused.value = newState
+    private val _userEmail = MutableStateFlow<String?>(null)
+    val userEmail = _userEmail.asStateFlow()
+
+    private val _remoteFiles = MutableStateFlow<List<RemoteFile>>(emptyList())
+    val remoteFiles = _remoteFiles.asStateFlow()
+
+    private val _currentPath = MutableStateFlow("")
+    val currentPath = _currentPath.asStateFlow()
+
+    private val prefs = UserPreferences(app.applicationContext)
+    private val client = OkHttpClient()
+    private val serverHttpBaseUrl = BuildConfig.QWEN_WS_URL
+        .replaceFirst("ws://", "http://")
+        .replaceFirst("wss://", "https://")
+    private suspend fun getUserEmail(): String? =
+        prefs.getEmail()?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+
+    fun init() {
+        viewModelScope.launch {
+            try {
+                _phase.value = Phase.LOADING
+                val email = getUserEmail() ?: error("No saved email found")
+                val preferredProject = prefs.getAgentSelectedProject()
+                _userEmail.value = email
+                loadProjects(email, preferredProject)
+                _phase.value = Phase.READY
+                fetchRemoteFiles()
+            } catch (e: Exception) {
+                _error.value = "Failed to connect: ${e.message}"
+                _phase.value = Phase.ERROR
+            }
         }
     }
 
-    fun loadHistory() {
-        _history.value = OutputDirectoryManager.listTaskFolders(getApplication())
+    fun fetchRemoteFiles() {
+        val emailJob = viewModelScope.launch(Dispatchers.IO) {
+            val email = getUserEmail() ?: return@launch
+            val project = _selectedProject.value ?: return@launch
+            val path = _currentPath.value
+
+            try {
+                val request = Request.Builder()
+                    .url(
+                        "$serverHttpBaseUrl/files?email=${Uri.encode(email)}" +
+                            "&project=${Uri.encode(project)}" +
+                            "&path=${Uri.encode(path)}" +
+                            "&${AgentRequestAuth.buildQuery(email)}"
+                    )
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw Exception("Failed to load files: ${response.code}")
+                    }
+
+                    val json = JSONObject(body)
+                    _currentPath.value = json.optString("path", path)
+                    val projectRoot = File(OutputDirectoryManager.getRootFolder(getApplication()), project)
+                    _remoteFiles.value = parseRemoteFiles(
+                        json.optJSONArray("files") ?: JSONArray(),
+                        projectRoot
+                    )
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to load files."
+            }
+        }
+        emailJob.invokeOnCompletion { }
     }
 
-    fun browseFiles(directory: File? = null) {
-        val root = OutputDirectoryManager.getRootFolder(getApplication())
-        val target = directory ?: root
-        _currentDirectory.value = if (target == root) null else target
-        _explorerFiles.value = target.listFiles()?.toList()?.sortedWith(compareBy({ !it.isDirectory }, { it.name })) ?: emptyList()
-    }
-
-    fun openFile(file: File) {
+    fun handleFileClick(file: RemoteFile) {
         if (file.isDirectory) {
-            browseFiles(file)
+            _currentPath.value = file.path
+            fetchRemoteFiles()
+            return
+        }
+
+        if (file.isDownloaded) {
+            openFile(getLocalProjectFile(file.path))
         } else {
-            val content = try { file.readText() } catch (e: Exception) { "Error reading file: ${e.message}" }
-            _selectedFileContent.value = file to content
+            downloadFileOnly(file)
         }
     }
 
-    fun closeFile() {
-        _selectedFileContent.value = null
+    fun navigateUp() {
+        val parts = _currentPath.value.trim('/').split('/').filter { it.isNotBlank() }
+        _currentPath.value = parts.dropLast(1).joinToString("/")
+        fetchRemoteFiles()
     }
 
-    fun navigateUp(): Boolean {
-        if (_selectedFileContent.value != null) {
-            _selectedFileContent.value = null
-            return true
-        }
-        val current = _currentDirectory.value
-        if (current != null) {
-            val root = OutputDirectoryManager.getRootFolder(getApplication())
-            val parent = current.parentFile
-            if (parent != null && parent.absolutePath.startsWith(root.absolutePath)) {
-                browseFiles(if (parent == root) null else parent)
-            } else {
-                browseFiles(null)
-            }
-            return true
-        }
-        return false
-    }
-
-    fun startNewTask() {
-        _isNewTaskSession.value = true
-        _resume.value = null
-        cachedGreeting?.let { greeting ->
-            if (_chat.value.isEmpty()) {
-                addMessage(ChatMessage("assistant", greeting))
+    fun loadProjects() {
+        viewModelScope.launch {
+            val email = getUserEmail() ?: return@launch
+            try {
+                _userEmail.value = email
+                loadProjects(email)
+                fetchRemoteFiles()
+            } catch (e: Exception) {
+                _error.value = e.message
             }
         }
     }
 
-    fun selectFolderToResume(folder: OutputDirectoryManager.TaskFolder) {
-        checkForResumableRun(folder.path)
-        _isNewTaskSession.value = false
-        // Clear any existing chat if we switch to a resume task
-        _chat.value = emptyList()
+    fun selectProject(projectName: String) {
+        if (projectName == _selectedProject.value) return
+
+        viewModelScope.launch {
+            try {
+                _phase.value = Phase.LOADING
+                applySelectedProject(projectName)
+                _phase.value = Phase.READY
+                fetchRemoteFiles()
+            } catch (e: Exception) {
+                _error.value = "Failed to switch project: ${e.message}"
+                _phase.value = Phase.ERROR
+            }
+        }
     }
 
-    fun checkForResumableRun(outputDir: String) {
-        val cp = CheckpointManager(outputDir)
-        if (!cp.exists()) {
-            _error.value = "No resumable checkpoint found in this folder."
-            return
-        }
-        val state  = cp.load() ?: run {
-            _error.value = "Failed to load checkpoint file."
-            return
-        }
-        val config = runCatching { AgentConfig.fromJson(state.configJson) }.getOrNull() ?: run {
-            _error.value = "Invalid configuration in checkpoint."
-            return
-        }
-        _resume.value = ResumeInfo(config, state.completedCount, config.totalTasks, outputDir)
-    }
+    fun createProject(name: String) {
+        val emailJob = viewModelScope.launch {
+            val email = getUserEmail() ?: return@launch
+            val trimmed = name.trim()
+            if (trimmed.isEmpty()) {
+                _error.value = "Project name cannot be empty."
+                return@launch
+            }
 
-    fun resumeRun() {
-        val resumeInfo = _resume.value ?: return
-        pendingConfig = resumeInfo.config
-        val outputDir = resumeInfo.outputDir
-        _resume.value = null
-        
-        _phase.value = Phase.RUNNING
-        _pipeline.value = PipelineState(totalTasks = pendingConfig!!.totalTasks, outputDir = outputDir)
+            try {
+                val requestBody = JSONObject()
+                    .put("email", email)
+                    .put("project", trimmed)
+                    .toString()
+                    .toRequestBody("application/json".toMediaType())
 
-        orchestrator?.startWorker(
-            config     = pendingConfig!!,
-            onProgress = { event -> handleEvent(event) },
-            onComplete = { summary ->
-                _summary.value = summary
-                _phase.value   = Phase.DONE
-                if (summary.isResumable) {
-                    _resume.value = ResumeInfo(pendingConfig!!, summary.succeeded, summary.total, outputDir)
+                val request = Request.Builder()
+                    .url("$serverHttpBaseUrl/projects?${AgentRequestAuth.buildQuery(email)}")
+                    .post(requestBody)
+                    .build()
+
+                withContext(Dispatchers.IO) {
+                    client.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            throw Exception("Failed to create project: ${response.code}")
+                        }
+                    }
                 }
-                loadHistory()
+
+                loadProjects(email)
+                _userEmail.value = email
+                selectProject(trimmed)
+            } catch (e: Exception) {
+                _error.value = e.message
             }
-        )
+        }
+        emailJob.invokeOnCompletion { }
     }
 
-    fun discardCheckpoint(outputDir: String) {
-        CheckpointManager(outputDir).clear()
-        _resume.value = null
-        loadHistory()
+    fun clearError() {
+        _error.value = null
     }
 
-    fun sendMessage(text: String) {
-        if (_phase.value != Phase.CONFIGURING) return
-        addMessage(ChatMessage("user", text))
-        orchestrator?.userMessage(text) { result ->
-            val clean = result.reply.replace(Regex("```agent_config[\\s\\S]*?```"), "").trim()
-            addMessage(ChatMessage("assistant", clean))
-            if (result.configReady && result.config != null) {
-                pendingConfig = result.config
-                _phase.value = Phase.READY_TO_RUN
+    private suspend fun loadProjects(email: String, preferredProject: String? = null) = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$serverHttpBaseUrl/projects?email=${Uri.encode(email)}&${AgentRequestAuth.buildQuery(email)}")
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw Exception("Failed to load projects: ${response.code}")
+            }
+
+            val json = JSONObject(body)
+            val projects = mutableListOf<ProjectSummary>()
+            val array = json.optJSONArray("projects") ?: JSONArray()
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                projects.add(
+                    ProjectSummary(
+                        name = item.optString("name"),
+                        fileCount = item.optInt("fileCount"),
+                        updatedAt = item.optString("updatedAt").takeIf { it.isNotBlank() }
+                    )
+                )
+            }
+
+            _projects.value = projects
+
+            val nextProject = preferredProject
+                ?.takeIf { preferred -> projects.any { it.name == preferred } }
+                ?: _selectedProject.value
+                    ?.takeIf { selected -> projects.any { it.name == selected } }
+                ?: projects.firstOrNull()?.name
+
+            if (nextProject != null) {
+                applySelectedProject(nextProject)
             }
         }
     }
 
-    fun confirmAndRun() {
-        val config = pendingConfig ?: return
+    private suspend fun applySelectedProject(projectName: String) {
+        _selectedProject.value = projectName
+        _currentPath.value = ""
+        prefs.setAgentSelectedProject(projectName)
+    }
 
-        // Clear chat history before running the agent
-        _chat.value = emptyList()
+    private fun parseRemoteFiles(array: JSONArray, projectRoot: File): List<RemoteFile> {
+        val list = mutableListOf<RemoteFile>()
+        for (i in 0 until array.length()) {
+            val obj = array.getJSONObject(i)
+            val relativePath = obj.getString("path")
+            val isDirectory = obj.getBoolean("isDirectory")
+            list.add(
+                RemoteFile(
+                    name = obj.getString("name"),
+                    path = relativePath,
+                    isDirectory = isDirectory,
+                    sizeBytes = if (obj.has("sizeBytes")) obj.getLong("sizeBytes") else null,
+                    updatedAt = obj.optString("updatedAt"),
+                    isDownloaded = isDirectory || File(projectRoot, relativePath).exists()
+                )
+            )
+        }
+        return list
+    }
 
-        val outputDir = OutputDirectoryManager
-            .createTaskFolder(getApplication(), config.taskDescription)
-            ?: run { _error.value = "Could not create output folder"; return }
+    private suspend fun downloadFile(remoteFile: RemoteFile): File = withContext(Dispatchers.IO) {
+        val email = getUserEmail() ?: throw IllegalStateException("No saved email found")
+        val project = _selectedProject.value ?: throw IllegalStateException("No project selected")
+        val url = "$serverHttpBaseUrl/files/download?email=${Uri.encode(email)}" +
+            "&project=${Uri.encode(project)}" +
+            "&path=${Uri.encode(remoteFile.path)}" +
+            "&${AgentRequestAuth.buildQuery(email)}"
 
-        val runConfig = config.copy(outputDirectory = outputDir)
-        pendingConfig = runConfig
+        val request = Request.Builder().url(url).build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("Server returned ${response.code}")
+            val body = response.body ?: throw Exception("Response body is null")
 
-        _phase.value    = Phase.RUNNING
-        _pipeline.value = PipelineState(totalTasks = runConfig.totalTasks, outputDir = outputDir)
+            val projectRoot = File(OutputDirectoryManager.getRootFolder(getApplication()), project)
+            if (!projectRoot.exists()) {
+                projectRoot.mkdirs()
+            }
+            val localFile = File(projectRoot, remoteFile.path)
+            localFile.parentFile?.mkdirs()
 
-        orchestrator?.startWorker(
-            config     = runConfig,
-            onProgress = { event -> handleEvent(event) },
-            onComplete = { summary ->
-                _summary.value = summary
-                _phase.value   = Phase.DONE
-                if (summary.isResumable) {
-                    _resume.value = ResumeInfo(runConfig, summary.succeeded, summary.total, outputDir)
+            body.byteStream().use { input ->
+                FileOutputStream(localFile).use { output ->
+                    input.copyTo(output)
                 }
-                loadHistory()
             }
-        )
-    }
-
-    private fun handleEvent(e: WorkerAgent.ProgressEvent) {
-        val cur = _pipeline.value ?: return
-        _pipeline.value = when (e) {
-            is WorkerAgent.ProgressEvent.Resumed       -> cur.copy(tasksDone = e.alreadyDone, currentStage = "▶️ Resuming — ${e.alreadyDone}/${e.total} done")
-            is WorkerAgent.ProgressEvent.TaskStarted   -> cur.copy(currentTask = e.taskIndex, currentFilename = e.filename, tasksDone = e.doneSoFar, currentStage = "Starting…", subtasksDone = 0, subtasksTotal = 0, currentDedupeValue = null)
-            is WorkerAgent.ProgressEvent.StageChanged  -> cur.copy(currentStage = stageLabel(e.stage))
-            is WorkerAgent.ProgressEvent.Planned       -> cur.copy(subtasksTotal = e.subtaskCount, subtasksDone = 0, currentDedupeValue = e.dedupeValue.ifBlank { null }, currentStage = "✍️ ${e.subtaskCount} subtasks planned")
-            is WorkerAgent.ProgressEvent.SubTaskStarted-> cur.copy(currentStage = "✍️ ${e.subtaskIndex}/${e.totalSubtasks}: ${e.title}")
-            is WorkerAgent.ProgressEvent.SubTaskDone   -> cur.copy(subtasksDone = cur.subtasksDone + 1)
-            is WorkerAgent.ProgressEvent.AnalysisStarted -> cur.copy(currentStage = "🔍 Analyzing ${e.filename}…")
-            is WorkerAgent.ProgressEvent.OutputAnalyzed  -> cur.copy(currentStage = "🔍 Analysis done")
-            is WorkerAgent.ProgressEvent.TaskFinished  -> cur.copy(tasksDone = e.doneSoFar, currentStage = if (e.result.success) "✅ ${e.result.task.filename}" else "❌ Failed")
+            localFile
         }
     }
 
-    private fun stageLabel(s: TopLevelTask.Stage) = when (s) {
-        TopLevelTask.Stage.PLAN    -> "📋 Planning subtasks…"
-        TopLevelTask.Stage.SOLVE   -> "✍️ Solving subtasks…"
-        TopLevelTask.Stage.COMBINE -> "🔗 Combining…"
-        TopLevelTask.Stage.DONE    -> "✅ Done"
-        TopLevelTask.Stage.FAILED  -> "❌ Failed"
-    }
-
-    fun clearError() { _error.value = null }
-
-    fun cancel()  { orchestrator?.cancelWorker(); _phase.value = Phase.DONE; loadHistory() }
-    fun restart() {
-        pendingConfig = null; _summary.value = null; _error.value = null
-        _pipeline.value = null; _chat.value = emptyList(); _resume.value = null
-        _phase.value = Phase.LOADING
-        orchestrator?.resetMeta(
-            onReady = { greeting ->
-                cachedGreeting = greeting
-                addMessage(ChatMessage("assistant", greeting))
-                _phase.value = Phase.CONFIGURING
-                _isNewTaskSession.value = true
-            },
-            onError = { err ->
-                _error.value = err
-                _phase.value = Phase.IDLE
+    private fun downloadFileOnly(remoteFile: RemoteFile) {
+        viewModelScope.launch {
+            try {
+                downloadFile(remoteFile)
+                fetchRemoteFiles()
+            } catch (e: Exception) {
+                _error.value = "Download failed: ${e.message}"
             }
-        )
-        loadHistory()
+        }
     }
 
-    override fun onCleared() { orchestrator?.destroy(); super.onCleared() }
-    private fun addMessage(m: ChatMessage) { _chat.value = _chat.value + m }
-
-    data class ChatMessage(val role: String, val text: String)
-
-    data class PipelineState(
-        val totalTasks: Int,
-        val tasksDone: Int = 0,
-        val currentTask: Int = 0,
-        val currentFilename: String = "",
-        val currentStage: String = "",
-        val currentDedupeValue: String? = null,
-        val subtasksTotal: Int = 0,
-        val subtasksDone: Int = 0,
-        val outputDir: String = ""
-    ) {
-        val taskPercent: Int    get() = if (totalTasks == 0) 0 else (tasksDone * 100) / totalTasks
-        val subtaskPercent: Int get() = if (subtasksTotal == 0) 0 else (subtasksDone * 100) / subtasksTotal
+    private fun getLocalProjectFile(relativePath: String): File {
+        val context = getApplication<Application>()
+        val project = _selectedProject.value ?: throw IllegalStateException("No project selected")
+        val projectRoot = File(OutputDirectoryManager.getRootFolder(context), project)
+        return File(projectRoot, relativePath)
     }
 
-    data class ResumeInfo(val config: AgentConfig, val alreadyDone: Int, val total: Int, val outputDir: String) {
-        val label: String get() = "Resume: $alreadyDone/$total done (${total - alreadyDone} remaining)"
+    private fun openFile(file: File) {
+        try {
+            val context = getApplication<Application>()
+            val project = _selectedProject.value ?: throw IllegalStateException("No project selected")
+            val projectRoot = File(OutputDirectoryManager.getRootFolder(context), project)
+            val relativePath = file.relativeTo(projectRoot).invariantSeparatorsPath
+
+            val intent = Intent(context, NotesActivity::class.java).apply {
+                putExtra(NotesActivity.EXTRA_TYPE, NotesActivity.TYPE_AGENT)
+                putExtra(NotesActivity.EXTRA_AGENT_ROOT_SUBDIR, project)
+                putExtra(NotesActivity.EXTRA_INITIAL_RELATIVE_PATH, relativePath)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            _error.value = "Could not open file: ${e.message}"
+        }
     }
+
+    data class RemoteFile(
+        val name: String,
+        val path: String,
+        val isDirectory: Boolean,
+        val sizeBytes: Long?,
+        val updatedAt: String?,
+        val isDownloaded: Boolean
+    )
+
+    data class ProjectSummary(
+        val name: String,
+        val fileCount: Int,
+        val updatedAt: String?
+    )
 }

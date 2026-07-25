@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">103.205.140.90</domain>
         <domain includeSubdomains="true">10.10.30.203</domain>
         <domain includeSubdomains="true">erp.mit.asia</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githusercontent.com</domain>
     </domain-config>
 </network-security-config>

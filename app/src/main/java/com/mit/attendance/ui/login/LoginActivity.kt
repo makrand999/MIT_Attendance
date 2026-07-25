@@ -5,7 +5,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
-import android.widget.ArrayAdapter
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -18,6 +18,7 @@ import com.mit.attendance.model.LoginResult
 import com.mit.attendance.service.AttendanceSyncWorker
 import com.mit.attendance.ui.subjects.ErpWebViewActivity
 import com.mit.attendance.ui.subjects.SubjectsActivity
+import com.mit.attendance.ui.theme.MedKitMotion
 import com.mit.attendance.ui.timetable.TimetableActivity
 import kotlinx.coroutines.launch
 
@@ -100,6 +101,7 @@ class LoginActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLoginBinding
     private val viewModel: LoginViewModel by viewModels { LoginViewModelFactory(applicationContext) }
+    private var semesterPickerVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,6 +111,7 @@ class LoginActivity : AppCompatActivity() {
         window.apply {
             clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
             addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             statusBarColor = Color.TRANSPARENT
             navigationBarColor = Color.TRANSPARENT
         }
@@ -119,13 +122,40 @@ class LoginActivity : AppCompatActivity() {
         setupSemesterDropdown()
         setupObservers()
         setupClickListeners()
+        MedKitMotion.playEntrance(binding.cardLogin)
+        MedKitMotion.applyFloat(binding.cardLogin, distanceDp = 5f, durationMs = 3200L)
     }
 
     private fun setupSemesterDropdown() {
-        val semOptions = (1..8).map { "Semester $it" }
-        val adapter = ArrayAdapter(this, R.layout.item_dropdown, semOptions)
-        binding.spinnerSemester.setAdapter(adapter)
-        binding.spinnerSemester.setText("Semester 1", false)
+        binding.spinnerSemester.setText("Semester 1")
+        binding.spinnerSemester.setOnClickListener {
+            hideKeyboard()
+            moveLoginContentForKeyboard(false)
+            toggleSemesterPicker()
+        }
+        binding.tilSemester.setEndIconOnClickListener {
+            hideKeyboard()
+            moveLoginContentForKeyboard(false)
+            toggleSemesterPicker()
+        }
+
+        listOf(
+            binding.btnSemester1 to 1,
+            binding.btnSemester2 to 2,
+            binding.btnSemester3 to 3,
+            binding.btnSemester4 to 4,
+            binding.btnSemester5 to 5,
+            binding.btnSemester6 to 6,
+            binding.btnSemester7 to 7,
+            binding.btnSemester8 to 8,
+        ).forEach { (button, semester) ->
+            button.scaleX = 0.86f
+            button.scaleY = 0.86f
+            button.setOnClickListener {
+                binding.spinnerSemester.setText("Semester $semester")
+                hideSemesterPicker()
+            }
+        }
     }
 
     private fun setupObservers() {
@@ -165,6 +195,21 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
+        binding.etEmail.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                hideSemesterPicker()
+                moveLoginContentForKeyboard(true)
+                liftLoginCardForKeyboard()
+            }
+        }
+        binding.etPassword.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                hideSemesterPicker()
+                moveLoginContentForKeyboard(true)
+                liftLoginCardForKeyboard()
+            }
+        }
+
         binding.btnLogin.setOnClickListener {
             val email = binding.etEmail.text.toString().trim()
             val password = binding.etPassword.text.toString()
@@ -172,5 +217,103 @@ class LoginActivity : AppCompatActivity() {
             val semId = semText.filter { it.isDigit() }.toIntOrNull()
             viewModel.login(email, password, semId)
         }
+    }
+
+    private fun toggleSemesterPicker() {
+        if (semesterPickerVisible) {
+            hideSemesterPicker()
+        } else {
+            showSemesterPicker()
+        }
+    }
+
+    private fun showSemesterPicker() {
+        semesterPickerVisible = true
+        binding.semesterPicker.apply {
+            animate().cancel()
+            visibility = View.VISIBLE
+            alpha = 0f
+            translationY = -18f
+            scaleX = 0.94f
+            scaleY = 0.94f
+            animate()
+                .alpha(1f)
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220L)
+                .start()
+        }
+
+        listOf(
+            binding.btnSemester1,
+            binding.btnSemester2,
+            binding.btnSemester3,
+            binding.btnSemester4,
+            binding.btnSemester5,
+            binding.btnSemester6,
+            binding.btnSemester7,
+            binding.btnSemester8,
+        ).forEachIndexed { index, button ->
+            button.animate().cancel()
+            button.alpha = 0f
+            button.translationY = 18f
+            button.scaleX = 0.78f
+            button.scaleY = 0.78f
+            button.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setStartDelay(index * 24L)
+                .setDuration(210L)
+                .start()
+        }
+
+        binding.loginScroll.postDelayed({
+            binding.loginScroll.smoothScrollTo(0, binding.semesterPicker.bottom)
+        }, 80L)
+    }
+
+    private fun hideSemesterPicker() {
+        if (!semesterPickerVisible && binding.semesterPicker.visibility != View.VISIBLE) return
+        semesterPickerVisible = false
+        binding.semesterPicker.animate().cancel()
+        binding.semesterPicker.animate()
+            .alpha(0f)
+            .translationY(-12f)
+            .scaleX(0.96f)
+            .scaleY(0.96f)
+            .setDuration(150L)
+            .withEndAction {
+                if (!semesterPickerVisible) {
+                    binding.semesterPicker.visibility = View.GONE
+                    binding.semesterPicker.translationY = -18f
+                }
+            }
+            .start()
+    }
+
+    private fun hideKeyboard() {
+        currentFocus?.let { focusedView ->
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(focusedView.windowToken, 0)
+            focusedView.clearFocus()
+        }
+    }
+
+    private fun liftLoginCardForKeyboard() {
+        val topInset = (42f * resources.displayMetrics.density).toInt()
+        binding.loginScroll.postDelayed({
+            binding.loginScroll.smoothScrollTo(0, (binding.cardLogin.top - topInset).coerceAtLeast(0))
+        }, 180L)
+    }
+
+    private fun moveLoginContentForKeyboard(raised: Boolean) {
+        val targetY = if (raised) -120f * resources.displayMetrics.density else 0f
+        binding.loginContent.animate()
+            .translationY(targetY)
+            .setDuration(220L)
+            .start()
     }
 }

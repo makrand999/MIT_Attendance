@@ -8,7 +8,6 @@
     android:background="@color/background_dark"
     tools:context=".ui.agent.AgentActivity">
 
-    <!-- Activity Background -->
     <ImageView
         android:id="@+id/ivBackground"
         android:layout_width="match_parent"
@@ -17,7 +16,6 @@
         android:src="@drawable/bg_detail"
         tools:ignore="ContentDescription" />
 
-    <!-- Dim Overlay -->
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -35,417 +33,467 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="@android:color/transparent"
-            app:title="AI Worker Agent"
             app:titleTextColor="@color/white"
             app:navigationIcon="@drawable/ic_back"
             app:navigationIconTint="@color/white">
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+            <ImageButton
+                android:id="@+id/btn_tools"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_gravity="end"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingEnd="8dp">
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_code"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                app:tint="@color/white"
+                android:contentDescription="Prompt Tools" />
 
-                <ImageButton
-                    android:id="@+id/btn_files_toggle"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:padding="12dp"
-                    android:scaleType="fitCenter"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_check_circle"
-                    android:contentDescription="View Files"
-                    app:tint="@color/white" />
+            <ImageButton
+                android:id="@+id/btn_files_toggle"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_folder"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                app:tint="@color/white"
+                android:contentDescription="Toggle Files" />
 
-                <ImageButton
-                    android:id="@+id/btn_gpt_toggle"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:padding="12dp"
-                    android:scaleType="fitCenter"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_gpt"
-                    android:contentDescription="Toggle GPT View"
-                    app:tint="@color/white" />
-            </LinearLayout>
+            <ImageButton
+                android:id="@+id/btn_restart"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_refresh"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                app:tint="@color/white"
+                android:contentDescription="Restart Chat" />
+
+            <TextView
+                android:id="@+id/btn_resume_chat"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:gravity="center"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:text="R"
+                android:textColor="@color/white"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:contentDescription="Resume Chat" />
 
         </com.google.android.material.appbar.MaterialToolbar>
     </com.google.android.material.appbar.AppBarLayout>
 
-    <FrameLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
-            android:id="@+id/layout_agent_main"
+        <com.termux.view.TerminalView
+            android:id="@+id/wv_terminal"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="0dp"
+            android:layout_margin="8dp"
+            android:background="@android:color/transparent"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:overScrollMode="never"
+            app:layout_constraintBottom_toTopOf="@+id/bottom_panel"
+            app:layout_constraintTop_toTopOf="parent" />
 
-            <!-- History / Resumable Tasks List -->
+        <View
+            android:id="@+id/view_workspace_scrim"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#88000000"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@+id/bottom_panel"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:visibility="visible" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/layout_file_manager"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_margin="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone"
+            app:cardBackgroundColor="@android:color/transparent"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            app:strokeColor="@android:color/transparent"
+            app:strokeWidth="0dp"
+            app:layout_constraintBottom_toTopOf="@+id/bottom_panel"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:visibility="visible">
+
             <LinearLayout
-                android:id="@+id/layout_history"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:orientation="vertical"
-                android:visibility="visible"
-                app:layout_constraintBottom_toTopOf="@+id/bottom_panel"
-                app:layout_constraintTop_toTopOf="parent">
+                android:layout_height="match_parent"
+                android:orientation="vertical">
 
-                <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/btn_new_task_card"
+                <RelativeLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="12dp"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="8dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    app:cardBackgroundColor="@color/white_10"
-                    app:cardCornerRadius="12dp"
-                    app:strokeColor="@color/white_20"
-                    app:strokeWidth="1dp"
-                    app:rippleColor="#40FFFFFF">
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:padding="16dp"
-                        android:text="+ START NEW AGENT TASK"
-                        android:textColor="@color/white"
-                        android:textStyle="bold"
-                        android:gravity="center" />
-                </com.google.android.material.card.MaterialCardView>
-
-                <TextView
-                    android:id="@+id/tv_history_title"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp"
-                    android:layout_marginTop="12dp"
-                    android:layout_marginBottom="8dp"
-                    android:text="Resumable Tasks"
-                    android:textColor="@color/white_70"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/rv_history"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:clipToPadding="false"
-                    android:paddingBottom="16dp"
-                    tools:listitem="@layout/item_task_history" />
-            </LinearLayout>
-
-            <!-- Chat Area (Hidden by default, shown if conversation starts) -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rv_chat"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:padding="8dp"
-                android:clipToPadding="false"
-                android:visibility="gone"
-                app:layout_constraintBottom_toTopOf="@+id/bottom_panel"
-                app:layout_constraintTop_toTopOf="parent" />
-
-            <!-- Progress / Pipeline Panel (Visible when RUNNING) -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_pipeline"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="16dp"
-                android:visibility="gone"
-                app:cardBackgroundColor="@color/white_10"
-                app:cardCornerRadius="16dp"
-                app:strokeColor="@color/white_20"
-                app:strokeWidth="1dp"
-                app:layout_constraintBottom_toTopOf="@+id/bottom_panel"
-                tools:visibility="visible">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
-                        android:id="@+id/tv_pipeline_title"
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Processing Tasks"
-                        android:textColor="@color/white"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:layout_centerVertical="true"
+                        android:orientation="vertical">
 
-                    <TextView
-                        android:id="@+id/tv_current_filename"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textColor="@color/white_70"
-                        android:textSize="14sp"
-                        tools:text="Current: Program_001.cs" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Project Workspace"
+                            android:textColor="@color/white"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
 
-                    <TextView
-                        android:id="@+id/tv_stage"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:textColor="@color/accent"
-                        android:textSize="14sp"
-                        tools:text="📋 Planning subtasks…" />
+                        <TextView
+                            android:id="@+id/tv_current_path"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="/"
+                            android:textColor="@color/white_70"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-                    <ProgressBar
-                        android:id="@+id/pb_task"
-                        style="@android:style/Widget.ProgressBar.Horizontal"
-                        android:layout_width="match_parent"
-                        android:layout_height="8dp"
-                        android:layout_marginTop="12dp"
-                        android:progressDrawable="@drawable/progress_bar_custom"
-                        tools:progress="30" />
+                    <ImageButton
+                        android:id="@+id/btn_close_files"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_alignParentEnd="true"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_close"
+                        app:tint="@color/white_70" />
+                </RelativeLayout>
 
-                    <TextView
-                        android:id="@+id/tv_task_progress"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end"
-                        android:layout_marginTop="2dp"
-                        android:textColor="@color/white_70"
-                        android:textSize="12sp"
-                        tools:text="Tasks: 3/10 (30%)" />
-
-                    <ProgressBar
-                        android:id="@+id/pb_subtask"
-                        style="@android:style/Widget.ProgressBar.Horizontal"
-                        android:layout_width="match_parent"
-                        android:layout_height="4dp"
-                        android:layout_marginTop="8dp"
-                        android:progressDrawable="@drawable/progress_bar_custom_small"
-                        tools:progress="60" />
-
-                    <Button
-                        android:id="@+id/btn_cancel"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end"
-                        android:text="Cancel"
-                        android:textColor="@color/white_70" />
-
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Resume Bar (Sticky bar for current selection) -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_resume"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="8dp"
-                android:visibility="gone"
-                app:cardBackgroundColor="@color/white_10"
-                app:cardCornerRadius="8dp"
-                app:strokeColor="@color/white_20"
-                app:strokeWidth="1dp"
-                app:layout_constraintBottom_toTopOf="@id/bottom_panel"
-                tools:visibility="visible">
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/white_10" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:padding="8dp">
+                    android:paddingHorizontal="16dp"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="10dp">
 
-                    <TextView
-                        android:id="@+id/tv_resume_label"
+                    <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:textColor="@color/white"
-                        android:textSize="13sp"
-                        tools:text="Resume: 5/10 done (5 remaining)" />
+                        android:orientation="vertical">
 
-                    <Button
-                        android:id="@+id/btn_discard_resume"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Discard"
-                        android:textColor="@color/white_70" />
+                        <TextView
+                            android:id="@+id/tv_current_project"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="default"
+                            android:textColor="@color/white"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
-                    <Button
-                        android:id="@+id/btn_resume"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="Resume"
-                        android:textColor="@color/white"
-                        app:strokeColor="@color/white" />
+                        <TextView
+                            android:id="@+id/tv_project_meta"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="0 items"
+                            android:textColor="@color/white_70"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <ImageButton
+                        android:id="@+id/btn_project_picker"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_expand_more"
+                        app:tint="@color/white" />
+
+                    <ImageButton
+                        android:id="@+id/btn_project_up"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_arrow_upward"
+                        app:tint="@color/white" />
+
+                    <ImageButton
+                        android:id="@+id/btn_project_create"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_plus"
+                        app:tint="@color/white" />
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
 
-            <!-- Bottom Panel (Input / Actions) -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_remote_files"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:padding="8dp"
+                    android:clipToPadding="false" />
+
+                <TextView
+                    android:id="@+id/tv_explorer_empty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:padding="24dp"
+                    android:text="No files in this folder yet."
+                    android:textColor="@color/white_70"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <LinearLayout
+            android:id="@+id/bottom_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@android:color/transparent"
+            android:orientation="vertical"
+            android:padding="12dp"
+            app:layout_constraintBottom_toBottomOf="parent">
+
             <LinearLayout
-                android:id="@+id/bottom_panel"
+                android:id="@+id/layout_swipe_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@android:color/transparent"
-                android:orientation="vertical"
-                android:padding="12dp"
-                app:layout_constraintBottom_toBottomOf="parent">
+                android:layout_marginBottom="8dp"
+                android:orientation="horizontal"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <EditText
+                    android:id="@+id/et_swipe_input"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_agent_input"
+                    android:hint="Compose text here, then Send"
+                    android:imeOptions="actionSend"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:paddingHorizontal="14dp"
+                    android:textColor="@color/white"
+                    android:textColorHint="@color/white_70" />
+            </LinearLayout>
+
+            <HorizontalScrollView
+                android:id="@+id/terminal_action_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:fadingEdgeLength="0dp"
+                android:overScrollMode="never"
+                android:paddingBottom="4dp"
+                android:scrollbars="none">
 
                 <LinearLayout
-                    android:id="@+id/layout_input"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <EditText
-                        android:id="@+id/et_message"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                    <TextView
+                        android:id="@+id/btn_term_mark"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
                         android:background="@drawable/bg_agent_input"
-                        android:hint="New task description..."
-                        android:importantForAutofill="no"
-                        android:inputType="textMultiLine"
-                        android:maxLines="4"
-                        android:padding="12dp"
+                        android:gravity="center"
+                        android:minWidth="64dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Mark"
                         android:textColor="@color/white"
-                        android:textColorHint="@color/white_70" />
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
-                    <ImageButton
-                        android:id="@+id/btn_send"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:layout_marginStart="8dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@drawable/ic_send"
-                        app:tint="@color/white" />
+                    <TextView
+                        android:id="@+id/btn_term_copy"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="64dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Copy"
+                        android:textColor="@color/white"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/btn_term_select_all"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="84dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Select All"
+                        android:textColor="@color/white"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/btn_term_input_mode"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="92dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Swipe Off"
+                        android:textColor="@color/white"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/btn_term_shift"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="72dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Shift"
+                        android:textColor="@color/white"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/btn_term_ctrl_c"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="72dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Ctrl+C"
+                        android:textColor="@color/white"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/btn_term_esc"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="60dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Esc"
+                        android:textColor="@color/white"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/btn_term_tab"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="60dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Tab"
+                        android:textColor="@color/white"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/btn_term_up"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:text="↑"
+                        android:textColor="@color/white"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/btn_term_down"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:text="↓"
+                        android:textColor="@color/white"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/btn_term_left"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:text="←"
+                        android:textColor="@color/white"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/btn_term_right"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:text="→"
+                        android:textColor="@color/white"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/btn_term_enter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_agent_input"
+                        android:gravity="center"
+                        android:minWidth="68dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="Enter"
+                        android:textColor="@color/white"
+                        android:textSize="13sp" />
                 </LinearLayout>
-
-                <Button
-                    android:id="@+id/btn_run"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="CONFIRM AND RUN AGENT"
-                    android:textColor="@color/green_light"
-                    android:visibility="gone"
-                    app:strokeColor="@color/green_light"
-                    tools:visibility="visible" />
-
-                <Button
-                    android:id="@+id/btn_restart"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="CANCEL SELECTION"
-                    android:textColor="@color/white_70"
-                    android:visibility="gone"
-                    app:strokeColor="@color/white_20" />
-
-            </LinearLayout>
-
-            <ProgressBar
-                android:id="@+id/pb_loading"
-                style="?android:attr/progressBarStyleSmall"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:indeterminateTint="@android:color/white"
-                android:visibility="gone"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-
-        </androidx.constraintlayout.widget.ConstraintLayout>
-
-        <!-- Full Screen WebView Container for GPT mode -->
-        <FrameLayout
-            android:id="@+id/hidden_webview_container"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@android:color/black"
-            android:visibility="gone"
-            tools:visibility="gone">
-
-            <Button
-                android:id="@+id/btn_pause_toggle"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="bottom|center_horizontal"
-                android:layout_marginBottom="32dp"
-                android:text="STOP AGENT"
-                android:textColor="@color/red_light"
-                app:strokeColor="@color/red_light" />
-
-        </FrameLayout>
-
-        <!-- File Explorer Container -->
-        <LinearLayout
-            android:id="@+id/layout_file_explorer"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@color/background_dark"
-            android:orientation="vertical"
-            android:visibility="gone"
-            tools:visibility="visible">
-
-            <androidx.appcompat.widget.Toolbar
-                android:id="@+id/toolbar_files"
-                android:layout_width="match_parent"
-                android:layout_height="?attr/actionBarSize"
-                android:background="@android:color/transparent"
-                app:title="Files"
-                app:titleTextColor="@color/white"
-                app:navigationIcon="@drawable/ic_back"
-                app:navigationIconTint="@color/white">
-
-                <ImageButton
-                    android:id="@+id/btn_share_file"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_gravity="end"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_check_circle"
-                    android:visibility="gone"
-                    app:tint="@color/white" />
-            </androidx.appcompat.widget.Toolbar>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rv_files"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:clipToPadding="false"
-                android:padding="12dp" />
-
-            <ScrollView
-                android:id="@+id/scroll_file_content"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:background="#E60F0F1A"
-                android:visibility="gone">
-                <TextView
-                    android:id="@+id/tv_file_content"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:padding="16dp"
-                    android:textColor="@color/white"
-                    android:textSize="14sp"
-                    android:fontFamily="monospace" />
-            </ScrollView>
-
+            </HorizontalScrollView>
         </LinearLayout>
-    </FrameLayout>
+
+        <ProgressBar
+            android:id="@+id/pb_loading"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:indeterminateTint="@android:color/white"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

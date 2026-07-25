@@ -49,20 +49,34 @@ data class Practical(
     @SerializedName("practical_aim") val practicalAim: String,
     @SerializedName("practical_description") val practicalDescription: String?,
     @SerializedName("expected_output") val expectedOutput: String?,
+    val batch: String? = null,
     // submitted practicals carry these back
     val theory: String?,
     val conclusion: String?,
     val language: String?,
     val code: String?,
-    
+    val output: String? = null,
+    val error: String? = null,
+    @SerializedName("submission_type") val submissionType: String? = null,
+    @SerializedName("remainingtime") val remainingTime: String? = null,
+    @SerializedName("autosubmitted") val autoSubmitted: Boolean? = null,
+    @SerializedName("practical_doc") val practicalDoc: String? = null,
+    @SerializedName("submission_id") val submissionId: Int? = null,
+    val evaluated: Boolean? = null,
+
     // Fields for local caching
     var subjectId: Int = 0,
-    var isSubmitted: Boolean = false
+    var isSubmitted: Boolean = false,
+    var localDraftSavedAt: Long? = null,
+    var lastServerSyncAt: Long? = null,
+    var lastServerVerifiedAt: Long? = null,
+    var pendingSyncAction: String? = null,
+    var lastSyncError: String? = null
 )
 
 // ── Submit payload ─────────────────────────────────────────────────────────
 
-data class PracticalSubmitPayload(
+data class PracticalEditorPayload(
     val practical: Int,
     val division: Int,
     val batch: Any? = null,
@@ -74,3 +88,93 @@ data class PracticalSubmitPayload(
     val error: String,
     val conclusion: String
 )
+
+data class PracticalSubmissionPayload(
+    val practical: Int,
+    val division: Int,
+    val batch: Any? = null,
+    val subjects: Int,
+    val theory: String,
+    val code: String,
+    val output: String,
+    val conclusion: String,
+    val error: String,
+    @SerializedName("remainingtime") val remainingTime: String,
+    @SerializedName("autosubmitted") val autoSubmitted: Boolean,
+    @SerializedName("submission_type") val submissionType: String
+)
+
+data class PracticalSubmissionUpdatePayload(
+    @SerializedName("submission_id") val submissionId: Int,
+    val practical: Int,
+    val division: Int,
+    val batch: Any? = null,
+    val subjects: Int,
+    val theory: String,
+    val code: String,
+    val output: String,
+    val conclusion: String,
+    val error: String,
+    @SerializedName("submission_type") val submissionType: String,
+    @SerializedName("remove_pdf") val removePdf: Boolean,
+    @SerializedName("active_section") val activeSection: String
+)
+
+data class PracticalServerDraftEnvelope(
+    val draft: PracticalRemoteEntry? = null
+)
+
+data class PracticalServerSubmissionEnvelope(
+    val submission: PracticalRemoteEntry? = null
+)
+
+data class PracticalRemoteEntry(
+    val id: Int? = null,
+    val practical: Int? = null,
+    val division: Int? = null,
+    val batch: Any? = null,
+    val subjects: Int? = null,
+    val language: String? = null,
+    val theory: String? = null,
+    val code: String? = null,
+    val output: String? = null,
+    val conclusion: String? = null,
+    val error: String? = null,
+    @SerializedName("submission_type") val submissionType: String? = null,
+    @SerializedName("remainingtime") val remainingTime: String? = null,
+    @SerializedName("autosubmitted") val autoSubmitted: Boolean? = null,
+    @SerializedName("practical_doc") val practicalDoc: String? = null,
+    val evaluated: Boolean? = null
+)
+
+data class PracticalAttachment(
+    val fileName: String,
+    val bytes: ByteArray,
+    val mimeType: String = "application/pdf"
+)
+
+data class PracticalEditorState(
+    val source: RemoteEditorSource,
+    val submissionId: Int? = null,
+    val language: String = "python",
+    val theory: String = "",
+    val code: String = "",
+    val output: String = "",
+    val error: String = "",
+    val conclusion: String = "",
+    val submissionType: String? = null,
+    val practicalDoc: String? = null,
+    val evaluated: Boolean = false
+)
+
+enum class RemoteEditorSource {
+    DRAFT,
+    SUBMISSION
+}
+
+enum class PracticalServerStatus {
+    AVAILABLE,
+    WIFI_REQUIRED,
+    SERVER_DOWN,
+    UNKNOWN
+}

@@ -4,22 +4,15 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark">
+    android:background="@drawable/bg_medkit_screen">
 
-    <!-- Activity Background -->
     <ImageView
         android:id="@+id/ivBackground"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerCrop"
-        android:src="@drawable/bg_detail"
+        android:scaleType="fitXY"
+        android:src="@drawable/bg_medkit_screen"
         tools:ignore="ContentDescription" />
-
-    <!-- Dim Overlay -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#B3000000" />
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
@@ -30,11 +23,19 @@
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="@android:color/transparent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/bg_medkit_card"
+            android:minHeight="?attr/actionBarSize"
+            android:paddingStart="18dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp"
             app:navigationIcon="@drawable/ic_back"
-            app:navigationIconTint="@color/white"
-            app:titleTextColor="@color/white" />
+            app:navigationIconTint="@color/medkit_line"
+            app:titleTextColor="@color/medkit_ink" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -53,15 +54,16 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:clipToPadding="false"
-                android:padding="12dp" />
+                android:paddingBottom="24dp" />
 
             <TextView
                 android:id="@+id/tvEmpty"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:text="No practicals found"
-                android:textColor="@color/white_70"
+                android:gravity="center"
+                android:text="No practicals found.\nPull to refresh and try again."
+                android:textColor="@color/medkit_ink_2"
                 android:textSize="16sp"
                 android:visibility="gone" />
 

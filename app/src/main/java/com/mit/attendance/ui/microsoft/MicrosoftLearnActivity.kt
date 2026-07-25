@@ -39,7 +39,7 @@ class MicrosoftLearnActivity : AppCompatActivity() {
         val targetUrl = intent.getStringExtra("target_url")
         isFccMode = targetUrl?.contains("freecodecamp") == true
 
-        // Floating back button (Bottom Left)
+        // Floating back button (Bottom Left) - Exit directly
         binding.btnBack.setOnClickListener {
             finish()
         }
@@ -51,7 +51,10 @@ class MicrosoftLearnActivity : AppCompatActivity() {
         setupWebView(targetUrl)
         setupSwipeRefresh()
 
-        // System back button: Navigate back page-by-page in WebView
+        // System back button: Still allow page-by-page navigation for system back if desired, 
+        // but the request was about the "navigation back arrow". 
+        // Usually, users expect consistency. If the button exits, maybe the system back should too?
+        // But the prompt specifically mentions the "navigation back arrow".
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (binding.webView.canGoBack()) {
@@ -242,6 +245,11 @@ class MicrosoftLearnActivity : AppCompatActivity() {
                 type,
                 uid,
                 object : MicrosoftLearnCompleter.CompletionCallback {
+                    override fun onStatus(message: String, isError: Boolean) {
+                        // Keep the in-WebView completer lightweight; detailed status is shown
+                        // in the certifications dialog flow instead of this screen.
+                    }
+
                     override fun onSuccess() {
                         isJobRunning = false
                         binding.progressBar.visibility = View.GONE

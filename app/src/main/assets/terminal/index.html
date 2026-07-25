@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+  >
+  <title>Terminal</title>
+  <link
+    rel="stylesheet"
+    href="vendor/xterm.css"
+  >
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    body {
+      font-family: monospace;
+    }
+
+    #terminal-root {
+      width: 100%;
+      height: 100%;
+      padding: 10px 12px;
+      box-sizing: border-box;
+      background: rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    #terminal {
+      width: 100%;
+      height: 100%;
+    }
+
+    #fallback {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+      color: rgba(255, 255, 255, 0.9);
+      background: rgba(0, 0, 0, 0.75);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    #fallback .error-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    #fallback .error-detail {
+      font-size: 13px;
+      opacity: 0.8;
+    }
+
+    .xterm-viewport::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+
+    #selection-hint {
+      position: absolute;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(15, 15, 15, 0.82);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 12px;
+      line-height: 1.2;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 140ms ease;
+      white-space: nowrap;
+    }
+
+    #selection-hint.visible {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="terminal-root">
+    <div id="terminal"></div>
+    <div id="selection-hint">Selection mode: drag to highlight text</div>
+  </div>
+  <div id="fallback">
+    <div class="error-title">Terminal UI failed to load.</div>
+    <div id="error-msg" class="error-detail">Initializing...</div>
+  </div>
+
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/xterm-addon-fit.js"></script>
+  <script>
+    (function () {
+      const fallback = document.getElementById('fallback');
+      const errorMsg = document.getElementById('error-msg');
+      const terminalElement = document.getElementById('terminal');
+      const selectionHint = document.getElementById('selection-hint');
+
+      const checkResources = () => {
+        let missing = [];
+        if (!window.Terminal) missing.push('xterm.js');
+        if (!window.FitAddon) missing.push('fit-addon.js');
+        if (!window.AndroidTerminal) missing.push('Android Bridge');
+
+        if (missing.length > 0) {
+          console.error('Terminal load failed. Missing: ' + missing.join(', '));
+          errorMsg.innerText = 'Missing: ' + missing.join(', ') + '.';
+          fallback.style.display = 'flex';
+          return false;
+        }
+        return true;
+      };
+
+      if (!checkResources()) return;
+
+      try {
+        const decoder = new TextDecoder('utf-8');
+        const term = new window.Terminal({
+          allowProposedApi: false,
+          convertEol: false,
+          cursorBlink: true,
+          cursorStyle: 'block',
+          fontFamily: '"Fira Code", "JetBrains Mono", monospace',
+          fontSize: 14,
+          lineHeight: 1.18,
+          scrollback: 5000,
+          theme: {
+            background: 'rgba(0,0,0,0)',
+            foreground: '#f3f4f7',
+            cursor: '#f3f4f7',
+            selectionBackground: 'rgba(255,255,255,0.20)'
+          }
+        });
+        const fitAddon = new window.FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(terminalElement);
+
+        const LONG_PRESS_MS = 320;
+        const MOVE_CANCEL_PX = 10;
+        const selectionState = {
+          active: false,
+          startCell: null,
+          longPressTimer: null,
+          suppressNextClick: false,
+          pendingTouchPoint: null,
+          markMode: false,
+          markAnchor: null,
+          markFocus: null
+        };
+
+        function showSelectionHint(message) {
+          if (message) {
+            selectionHint.textContent = message;
+          }
+          selectionHint.classList.add('visible');
+          window.clearTimeout(showSelectionHint.hideTimer);
+          showSelectionHint.hideTimer = window.setTimeout(function () {
+            selectionHint.classList.remove('visible');
+          }, 1800);
+        }
+
+        function getCellMetrics() {
+          const dimensions = term._core &&
+            term._core._renderService &&
+            term._core._renderService.dimensions &&
+            term._core._renderService.dimensions.css;
+          if (!dimensions || !dimensions.cell || !dimensions.canvas) return null;
+          if (!dimensions.cell.width || !dimensions.cell.height) return null;
+          return dimensions;
+        }
+
+        function toBufferCell(clientX, clientY) {
+          const metrics = getCellMetrics();
+          if (!metrics) return null;
+
+          const rect = terminalElement.getBoundingClientRect();
+          const x = Math.max(0, Math.min(clientX - rect.left, rect.width - 1));
+          const y = Math.max(0, Math.min(clientY - rect.top, rect.height - 1));
+          const col = Math.max(0, Math.min(term.cols - 1, Math.floor(x / metrics.cell.width)));
+          const viewportRow = Math.max(0, Math.min(term.rows - 1, Math.floor(y / metrics.cell.height)));
+          const row = term.buffer.active.viewportY + viewportRow;
+          return { col: col, row: row };
+        }
+
+        function clearLongPressTimer() {
+          if (selectionState.longPressTimer !== null) {
+            window.clearTimeout(selectionState.longPressTimer);
+            selectionState.longPressTimer = null;
+          }
+        }
+
+        function clearTouchSelectionState() {
+          clearLongPressTimer();
+          selectionState.pendingTouchPoint = null;
+          selectionState.active = false;
+          selectionState.startCell = null;
+        }
+
+        function clampCell(cell) {
+          const buffer = term.buffer.active;
+          const maxRow = Math.max(0, buffer.length - 1);
+          return {
+            row: Math.max(0, Math.min(maxRow, cell.row)),
+            col: Math.max(0, Math.min(term.cols - 1, cell.col))
+          };
+        }
+
+        function compareCells(a, b) {
+          if (a.row !== b.row) return a.row - b.row;
+          return a.col - b.col;
+        }
+
+        function normalizeRange(a, b) {
+          if (compareCells(a, b) <= 0) {
+            return { start: a, end: b };
+          }
+          return { start: b, end: a };
+        }
+
+        function selectRange(startCell, endCell) {
+          const range = normalizeRange(clampCell(startCell), clampCell(endCell));
+          const length = ((range.end.row - range.start.row) * term.cols) +
+            (range.end.col - range.start.col) + 1;
+          term.select(range.start.col, range.start.row, Math.max(1, length));
+        }
+
+        function setMarkCursor(cell) {
+          const clamped = clampCell(cell);
+          selectionState.markAnchor = clamped;
+          selectionState.markFocus = clamped;
+          selectRange(clamped, clamped);
+        }
+
+        function moveMarkCursor(rowDelta, colDelta) {
+          if (!selectionState.markMode) return;
+          const base = selectionState.markFocus ||
+            selectionState.markAnchor ||
+            { row: term.buffer.active.viewportY, col: 0 };
+          let nextRow = base.row + rowDelta;
+          let nextCol = base.col + colDelta;
+
+          if (nextCol < 0) {
+            nextRow -= 1;
+            nextCol = term.cols - 1;
+          } else if (nextCol >= term.cols) {
+            nextRow += 1;
+            nextCol = 0;
+          }
+
+          const nextCell = clampCell({ row: nextRow, col: nextCol });
+          if (!selectionState.markAnchor) {
+            setMarkCursor(nextCell);
+          } else {
+            selectionState.markFocus = nextCell;
+            selectRange(selectionState.markAnchor, nextCell);
+          }
+          term.focus();
+          showSelectionHint('Use arrows to extend selection, then tap Copy');
+        }
+
+        function setMarkMode(enabled) {
+          selectionState.markMode = !!enabled;
+          clearTouchSelectionState();
+          if (selectionState.markMode) {
+            selectionState.markAnchor = null;
+            selectionState.markFocus = null;
+            term.clearSelection();
+            term.focus();
+            showSelectionHint('Tap terminal to place cursor, then use arrows');
+          } else {
+            selectionState.markAnchor = null;
+            selectionState.markFocus = null;
+            selectionHint.classList.remove('visible');
+          }
+        }
+
+        function startTouchSelection(clientX, clientY) {
+          const startCell = toBufferCell(clientX, clientY);
+          if (!startCell) return;
+          selectionState.active = true;
+          selectionState.startCell = startCell;
+          selectionState.suppressNextClick = true;
+          term.focus();
+          selectRange(startCell, startCell);
+          showSelectionHint('Drag to highlight text');
+        }
+
+        function updateTouchSelection(touch) {
+          if (!selectionState.active || !selectionState.startCell) return;
+          const endCell = toBufferCell(touch.clientX, touch.clientY);
+          if (!endCell) return;
+          selectRange(selectionState.startCell, endCell);
+        }
+
+        terminalElement.addEventListener('touchstart', function (event) {
+          if (selectionState.markMode) return;
+          if (!event.touches || event.touches.length !== 1) {
+            clearLongPressTimer();
+            return;
+          }
+          const touch = event.touches[0];
+          clearLongPressTimer();
+          selectionState.pendingTouchPoint = {
+            x: touch.clientX,
+            y: touch.clientY
+          };
+          const pendingPoint = selectionState.pendingTouchPoint;
+          selectionState.longPressTimer = window.setTimeout(function () {
+            startTouchSelection(pendingPoint.x, pendingPoint.y);
+          }, LONG_PRESS_MS);
+        }, { passive: true });
+
+        terminalElement.addEventListener('touchmove', function (event) {
+          if (selectionState.markMode) return;
+          if (!event.touches || event.touches.length !== 1) return;
+          const touch = event.touches[0];
+          if (!selectionState.active) {
+            if (selectionState.pendingTouchPoint) {
+              const dx = touch.clientX - selectionState.pendingTouchPoint.x;
+              const dy = touch.clientY - selectionState.pendingTouchPoint.y;
+              if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+                clearLongPressTimer();
+                selectionState.pendingTouchPoint = null;
+              }
+            }
+            return;
+          }
+          event.preventDefault();
+          updateTouchSelection(touch);
+        }, { passive: false });
+
+        terminalElement.addEventListener('touchend', function () {
+          if (selectionState.markMode) return;
+          clearLongPressTimer();
+          selectionState.pendingTouchPoint = null;
+          if (selectionState.active) {
+            selectionState.active = false;
+            selectionState.startCell = null;
+          }
+        }, { passive: true });
+
+        terminalElement.addEventListener('touchcancel', function () {
+          if (selectionState.markMode) return;
+          clearTouchSelectionState();
+        }, { passive: true });
+
+        function reportSize() {
+          fitAddon.fit();
+          const cols = term.cols || 0;
+          const rows = term.rows || 0;
+          const root = document.getElementById('terminal-root');
+          window.AndroidTerminal.onTerminalResize(
+            cols,
+            rows,
+            Math.round(root.clientWidth),
+            Math.round(root.clientHeight)
+          );
+        }
+
+        function base64ToText(base64) {
+          const binary = window.atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          return decoder.decode(bytes);
+        }
+
+        term.onData(function (data) {
+          window.AndroidTerminal.onTerminalData(data);
+        });
+
+        term.textarea.addEventListener('focus', reportSize);
+        terminalElement.addEventListener('click', function (event) {
+          if (selectionState.markMode) {
+            const cell = toBufferCell(event.clientX, event.clientY);
+            if (cell) {
+              setMarkCursor(cell);
+              showSelectionHint('Use arrows to extend selection, then tap Copy');
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          if (selectionState.suppressNextClick) {
+            selectionState.suppressNextClick = false;
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          term.focus();
+          reportSize();
+        }, true);
+        if (window.ResizeObserver) {
+          const resizeObserver = new ResizeObserver(function () {
+            reportSize();
+          });
+          resizeObserver.observe(document.getElementById('terminal-root'));
+        }
+        window.addEventListener('resize', reportSize);
+
+        window.TerminalApp = {
+          clear: function () {
+            term.clear();
+            term.reset();
+            reportSize();
+          },
+          focus: function () {
+            term.focus();
+            reportSize();
+          },
+          selectAll: function () {
+            term.selectAll();
+            term.focus();
+            reportSize();
+          },
+          setMarkMode: function (enabled) {
+            setMarkMode(enabled);
+          },
+          moveMarkSelection: function (rowDelta, colDelta) {
+            moveMarkCursor(Number(rowDelta) || 0, Number(colDelta) || 0);
+          },
+          copySelectionOrBuffer: function () {
+            let text = '';
+            if (term.hasSelection()) {
+              text = term.getSelection();
+            } else {
+              const activeBuffer = term.buffer && term.buffer.active;
+              if (activeBuffer && typeof activeBuffer.length === 'number' && typeof activeBuffer.getLine === 'function') {
+                const lines = [];
+                for (let i = 0; i < activeBuffer.length; i += 1) {
+                  const line = activeBuffer.getLine(i);
+                  if (!line || typeof line.translateToString !== 'function') continue;
+                  lines.push(line.translateToString(true).replace(/\u00A0/g, ' '));
+                }
+                text = lines.join('\n');
+              }
+            }
+            window.AndroidTerminal.onTerminalCopy(text);
+          },
+          writeBase64: function (base64) {
+            term.write(base64ToText(base64));
+          }
+        };
+
+        reportSize();
+        term.focus();
+        window.AndroidTerminal.onTerminalReady();
+        console.log('Terminal UI successfully initialized.');
+      } catch (e) {
+        console.error('Terminal init error:', e);
+        errorMsg.innerText = 'Init Error: ' + e.message;
+        fallback.style.display = 'flex';
+      }
+    }());
+  </script>
+</body>
+</html>

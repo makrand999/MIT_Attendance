@@ -22,6 +22,8 @@ class AttendanceRepository(private val context: android.content.Context) {
 
     private val subjectDao = db.subjectDao()
     private val attendanceDao = db.attendanceDao()
+    private val alertDao = db.alertDao()
+    private val practicalDao = db.practicalDao()
 
     // ── User Info ─────────────────────────────────────────────────────────────
 
@@ -33,7 +35,7 @@ class AttendanceRepository(private val context: android.content.Context) {
 
     fun getSubjectsFlow(): Flow<List<SubjectUiModel>> =
         subjectDao.getAllSubjectsWithNewCounts().map { rows ->
-            rows.map { (entity, newCount, actualPresent, actualAbsent, actualTotal) ->
+            rows.map { (entity, newCount, newAlertCount, actualPresent, actualAbsent, actualTotal) ->
                 val present = if (actualTotal > 0L) actualPresent.toInt() else entity.totalPresent
                 val absent  = if (actualTotal > 0L) actualAbsent.toInt()  else entity.totalAbsent
                 val total   = if (actualTotal > 0L) actualTotal.toInt()   else entity.totalLecture
@@ -46,7 +48,8 @@ class AttendanceRepository(private val context: android.content.Context) {
                     absent         = absent,
                     total          = total,
                     percentage     = pct,
-                    hasNewEntries  = newCount > 0
+                    hasNewEntries  = newCount > 0,
+                    hasNewAlerts   = newAlertCount > 0
                 )
             }
         }
@@ -193,8 +196,9 @@ class AttendanceRepository(private val context: android.content.Context) {
     // ── Login / logout ────────────────────────────────────────────────────────
 
     suspend fun login(email: String, password: String, semId: Int): LoginResult = withContext(Dispatchers.IO) {
-        // Emergency cleanup on login to prevent cross-account/cross-sem ghosting
-        db.clearAllTables()
+        // Surgical cleanup on login: only clear ERP attendance data. Keep practical
+        // cache and drafts so offline work survives account switches.
+        clearErpData()
         
         val result = api.login(email, password, semId)
         if (result is LoginResult.Success) {
@@ -214,9 +218,15 @@ class AttendanceRepository(private val context: android.content.Context) {
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {
-        prefs.clearAll()
-        subjectDao.deleteAll()
+        prefs.clearAccountData()
+        clearErpData()
         HttpClientHolder.clearSession()
+    }
+
+    private suspend fun clearErpData() {
+        subjectDao.deleteAll()
+        attendanceDao.deleteAll()
+        alertDao.deleteAll()
     }
 
     // ── Sync ──────────────────────────────────────────────────────────────────
@@ -236,6 +246,19 @@ class AttendanceRepository(private val context: android.content.Context) {
         if (prefs.getGender() == null) {
             api.fetchStudentInfo(creds.email, creds.password, creds.semId).getOrNull()?.Gender?.let {
                 prefs.saveGender(it)
+            }
+        }
+
+        // Fetch dashboard details only once (on first sync after login)
+        if (!prefs.isDashboardFetched()) {
+            api.fetchDashboardDetails(creds.email, creds.password, creds.semId).getOrNull()?.profileDetails?.let { details ->
+                prefs.saveProfile(
+                    rollNo = details.rollNo,
+                    mobileNo = details.mobileNo,
+                    firstName = details.firstName,
+                    courseName = details.courseName
+                )
+                Log.d(TAG, "Saved profile details for: ${details.firstName}")
             }
         }
 
@@ -291,7 +314,7 @@ class AttendanceRepository(private val context: android.content.Context) {
     suspend fun performCleanSync() = withContext(Dispatchers.IO) {
         val creds = prefs.getCredentialsSnapshot()
         if (creds.email.isEmpty()) return@withContext
-        db.clearAllTables()
+        clearErpData()
         login(creds.email, creds.password, creds.semId)
         syncSubjects(creds.semId, creds.email, creds.password)
         val subjects = subjectDao.getAllSubjectsList()

@@ -4,60 +4,54 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="4dp"
-    android:layout_marginBottom="4dp"
-    app:cardBackgroundColor="@android:color/transparent"
-    app:cardCornerRadius="10dp"
-    app:cardElevation="0dp">
+    android:layout_marginStart="14dp"
+    android:layout_marginTop="8dp"
+    android:layout_marginEnd="14dp"
+    android:layout_marginBottom="10dp"
+    app:cardBackgroundColor="@color/white"
+    app:cardCornerRadius="22dp"
+    app:cardElevation="4dp"
+    app:strokeColor="@color/medkit_line"
+    app:strokeWidth="3dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:padding="16dp">
 
-        <!-- Status strip on left -->
         <View
             android:id="@+id/status_indicator"
-            android:layout_width="6dp"
-            android:layout_height="match_parent"
-            android:minHeight="56dp" />
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:background="@drawable/circle_accent" />
 
-        <!-- Content -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
             android:layout_weight="1"
-            android:orientation="vertical"
-            android:padding="12dp">
+            android:orientation="vertical">
 
             <TextView
                 android:id="@+id/tv_date"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/text_primary"
+                android:fontFamily="@font/nunito"
+                android:textColor="@color/medkit_ink"
                 android:textSize="15sp"
-                android:shadowColor="#BF000000"
-                android:shadowDx="1"
-                android:shadowDy="1"
-                android:shadowRadius="3" />
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tv_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
-                android:shadowColor="#BF000000"
-                android:shadowDx="1"
-                android:shadowDy="1"
-                android:shadowRadius="2" />
-
+                android:layout_marginTop="4dp"
+                android:textColor="@color/medkit_ink_2"
+                android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- NEW badge -->
         <TextView
             android:id="@+id/badge_new"
             android:layout_width="wrap_content"
@@ -74,20 +68,18 @@
             android:textSize="10sp"
             android:visibility="gone" />
 
-        <!-- Status label -->
         <TextView
             android:id="@+id/tv_status"
-            android:layout_width="72dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="12dp"
-            android:fontFamily="sans-serif-bold"
-            android:gravity="center"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:shadowColor="#BF000000"
-            android:shadowDx="1"
-            android:shadowDy="1"
-            android:shadowRadius="2" />
+            android:background="@drawable/bg_status_submitted"
+            android:paddingStart="10dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="6dp"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"
+            android:textStyle="bold" />
 
     </LinearLayout>
 
