@@ -146,10 +146,6 @@
 -keep class org.eclipse.paho.** { *; }
 -dontwarn org.eclipse.paho.**
 
-# ── ZXing (barcode core) ───────────────────────────────────────────────────────
--keep class com.google.zxing.** { *; }
--dontwarn com.google.zxing.**
-
 # ── android-pdf-viewer (mhiew fork) ───────────────────────────────────────────
 -keep class com.github.mhiew.** { *; }
 -keep class com.github.barteksc.** { *; }

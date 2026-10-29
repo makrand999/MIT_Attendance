@@ -52,8 +52,23 @@ android {
             }
         }
 
-        ndk {
-            abiFilters "arm64-v8a", "x86_64"
+    }
+
+    // Keep emulator support for development, but only ship ARM64 libraries for
+    // the phone-focused release. Chaquopy bundles a Python runtime per ABI.
+    flavorDimensions "distribution"
+    productFlavors {
+        development {
+            dimension "distribution"
+            ndk {
+                abiFilters "arm64-v8a", "x86_64"
+            }
+        }
+        production {
+            dimension "distribution"
+            ndk {
+                abiFilters "arm64-v8a"
+            }
         }
     }
 
@@ -144,7 +159,6 @@ dependencies {
     implementation 'androidx.datastore:datastore-preferences:1.0.0'
     implementation 'androidx.core:core-splashscreen:1.0.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3'
-    implementation 'com.google.zxing:core:3.5.4'
     implementation 'org.apache.poi:poi:5.2.5'
     implementation 'org.apache.poi:poi-ooxml:5.2.5'
     implementation 'org.apache.poi:poi-scratchpad:5.2.5'
