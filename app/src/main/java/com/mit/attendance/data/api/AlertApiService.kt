@@ -17,20 +17,20 @@ interface AlertApiService {
 
     @GET("gists/{gist_id}")
     suspend fun getGist(
-        @Header("Authorization") token: String,
+        @Header("Authorization") token: String?,
         @Path("gist_id") gistId: String
     ): Response<GistResponse>
 
     @PATCH("gists/{gist_id}")
     suspend fun updateGist(
-        @Header("Authorization") token: String,
+        @Header("Authorization") token: String?,
         @Path("gist_id") gistId: String,
         @Body body: GistRequest
     ): Response<GistResponse>
 
     @POST("gists")
     suspend fun createGist(
-        @Header("Authorization") token: String,
+        @Header("Authorization") token: String?,
         @Body body: GistRequest
     ): Response<GistResponse>
 }

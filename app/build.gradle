@@ -11,8 +11,7 @@ android {
     compileSdk 34
 
     // Secrets are loaded from a gitignored secrets.properties at the repo root.
-    // Debug builds tolerate missing secrets (fall back to empty strings); release
-    // builds fail fast so we never ship a release with empty SSH/Qwen credentials.
+    // Firebase configuration is optional; missing values keep push disabled.
     def secrets = new Properties()
     def secretsFile = rootProject.file("secrets.properties")
     if (secretsFile.exists()) {
@@ -24,16 +23,14 @@ android {
         applicationId "com.mit.attendance"
         minSdk 26
         targetSdk 34
-        versionCode 14
-        versionName "1.0.0"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "QWEN_WS_URL", "\"${secretOrEmpty('QWEN_WS_URL')}\""
-        buildConfigField "String", "SSH_HOST", "\"${secretOrEmpty('SSH_HOST')}\""
-        buildConfigField "String", "SSH_USER", "\"${secretOrEmpty('SSH_USER')}\""
-        buildConfigField "String", "SSH_PASSWORD", "\"${secretOrEmpty('SSH_PASSWORD')}\""
-        buildConfigField "int", "SSH_PORT", "${secretOrEmpty('SSH_PORT') ?: 22}"
-        buildConfigField "String", "GITHUB_TOKEN_MAIN", "\"${secretOrEmpty('GITHUB_TOKEN_MAIN')}\""
-        buildConfigField "String", "GITHUB_TOKEN_ALERT", "\"${secretOrEmpty('GITHUB_TOKEN_ALERT')}\""
+        versionCode 15
+        versionName "1.1.0"
+
+        // Firebase client identifiers are public app configuration, never service-account keys.
+        ["FIREBASE_PROJECT_ID", "FIREBASE_APPLICATION_ID", "FIREBASE_API_KEY", "FIREBASE_SENDER_ID"].each { key ->
+            buildConfigField "String", key, "\"${secretOrEmpty(key)}\""
+        }
+
 
         python {
             buildPython "python3"
@@ -46,7 +43,7 @@ android {
                 install "httpx[http2]"     // HTTP client used for all API calls
                 install "anyio"            // async support
                 install "h2"               // HTTP/2 support (needed by httpx[http2])
-                install "dulwich"
+                install "dulwich==0.24.10"
                 install "requests"
 
                 // DO NOT add these:
@@ -81,20 +78,7 @@ android {
             shrinkResources true
             signingConfig signingConfigs.debugSigned
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // Release must not ship with empty secrets.
-            def releaseOk = secretsFile.exists() && !secretOrEmpty('QWEN_WS_URL').toString().isEmpty() \
-                && !secretOrEmpty('SSH_HOST').toString().isEmpty() \
-                && !secretOrEmpty('SSH_USER').toString().isEmpty() \
-                && !secretOrEmpty('SSH_PASSWORD').toString().isEmpty() \
-                && !secretOrEmpty('GITHUB_TOKEN_MAIN').toString().isEmpty() \
-                && !secretOrEmpty('GITHUB_TOKEN_ALERT').toString().isEmpty()
-            if (!releaseOk) {
-                if (!secretsFile.exists()) {
-                    throw new GradleException("release build requires secrets.properties at the repo root (see secrets.properties.example).")
-                } else {
-                    throw new GradleException("secrets.properties is missing one or more of QWEN_WS_URL, SSH_HOST, SSH_USER, SSH_PASSWORD, GITHUB_TOKEN_MAIN, GITHUB_TOKEN_ALERT. All must be non-empty for a release build.")
-                }
-            }
+
         }
     }
     compileOptions {
@@ -104,6 +88,7 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
+
     buildFeatures {
         viewBinding true
         buildConfig true
@@ -127,6 +112,7 @@ kotlin {
 }
 
 dependencies {
+    implementation 'com.google.firebase:firebase-messaging:24.0.0'
     implementation 'io.github.Rosemoe.sora-editor:editor:0.22.2'
 
     implementation 'androidx.core:core-ktx:1.12.0'
@@ -172,13 +158,10 @@ dependencies {
     implementation 'com.github.mhiew:android-pdf-viewer:3.2.0-beta.1'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     ksp 'com.github.bumptech.glide:ksp:4.16.0'
-    implementation 'com.github.yalantis:ucrop:2.2.11'
 
     // Markdown rendering
     implementation "io.noties.markwon:core:4.6.2"
     implementation "io.noties.markwon:ext-tables:4.6.2"
     implementation "io.noties.markwon:ext-strikethrough:4.6.2"
 
-    implementation 'org.java-websocket:Java-WebSocket:1.5.4'
-    implementation 'com.github.mwiede:jsch:0.2.20'
 }

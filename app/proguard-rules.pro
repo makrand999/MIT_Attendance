@@ -39,7 +39,6 @@
 # field access still needs the fields themselves preserved.
 -keepclassmembers,allowobfuscation class com.mit.attendance.model.** { <fields>; }
 -keepclassmembers,allowobfuscation class com.mit.attendance.data.api.** { <fields>; }
--keepclassmembers,allowobfuscation class com.mit.attendance.ui.microsoft.** { <fields>; }
 -keep @com.google.gson.annotations.SerializedName class * { <fields>; }
 -keepclassmembernames class * {
     @com.google.gson.annotations.SerializedName <fields>;
@@ -82,7 +81,6 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 -keep @kotlinx.serialization.Serializable class com.mit.attendance.model.GithubModels { *; }
--keep @kotlinx.serialization.Serializable class com.mit.attendance.model.CertificationModel { *; }
 -keep @kotlinx.serialization.Serializable class com.mit.attendance.model.TimetableModels { *; }
 -keep @kotlinx.serialization.Serializable class com.mit.attendance.model.ChatModels { *; }
 -keep class kotlinx.serialization.** { *; }
@@ -112,7 +110,6 @@
 -keep class com.chaquo.** { *; }
 -keep class com.chaquo.python.** { *; }
 -keep class com.chaquo.python.android.AndroidPlatform { *; }
--keepclasseswithmembers class com.mit.attendance.ui.certifications.PythonAutomationEngine { *; }
 -keepclasseswithmembers class com.mit.attendance.auth.GoogleAccountBackupManager { *; }
 # Python bridge entry points in NotesActivity (called from native/Python land).
 -keepclassmembers class com.mit.attendance.ui.subjects.NotesActivity {
@@ -145,17 +142,6 @@
 # jsoup optionally uses com.google.re2j for regex; absent on Android (it falls back).
 -dontwarn com.google.re2j.**
 
-# ── JSch (SSH) — reflection on configured ciphers/hashes ───────────────────────
--dontwarn com.jcraft.jgss.**
--keep class com.jcraft.jsch.** { *; }
--keep class com.github.mwiede.jsch.** { *; }
-# JSch optionally supports Windows Pageant (JNA), Kerberos (jgss), and unix-domain
-# sockets (junixsocket). None of these classes are present on Android; R8 must
-# ignore the dead references rather than fail.
--dontwarn com.sun.jna.**
--dontwarn org.ietf.jgss.**
--dontwarn org.newsclub.net.unix.**
-
 # ── Eclipse Paho MQTT ───────────────────────────────────────────────────────────
 -keep class org.eclipse.paho.** { *; }
 -dontwarn org.eclipse.paho.**
@@ -168,10 +154,6 @@
 -keep class com.github.mhiew.** { *; }
 -keep class com.github.barteksc.** { *; }
 -dontwarn com.github.barteksc.**
-
-# ── uCrop (Yalantis) ───────────────────────────────────────────────────────────
--keep class com.yalantis.ucrop.** { *; }
--keep class com.yalantis.** { *; }
 
 # ── Markwon (markdown) ─────────────────────────────────────────────────────────
 -keep class io.noties.markwon.** { *; }
@@ -198,10 +180,6 @@
 -dontwarn org.osgi.framework.**
 -dontwarn aQute.bnd.annotation.spi.**
 
-# ── Termux vendored terminal emulator (Java, referenced across package) ─────────
--keep class com.termux.** { *; }
--dontwarn com.termux.**
-
 # ── Material / AndroidX: silence links to classes removed in newer versions ─────
 -dontwarn com.google.android.material.**
 -dontwarn androidx.recyclerview.**
@@ -215,3 +193,11 @@
 # Keep source file names + line numbers for stack traces.
 -keepattributes SourceFile, LineNumberTable
 -renamesourcefileattribute SourceFile
+# Campus transport and encrypted session use Gson field names across app updates.
+-keep class com.mit.attendance.campus.CampusProfile { *; }
+-keep class com.mit.attendance.campus.CampusSession { *; }
+-keep class com.mit.attendance.campus.CampusCredentials { *; }
+-keep class com.mit.attendance.campus.CampusLogin { *; }
+-keep class com.mit.attendance.campus.CampusMe { *; }
+
+-keep class com.mit.attendance.campus.CachedCampusAlert { *; }

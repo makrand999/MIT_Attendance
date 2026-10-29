@@ -8,7 +8,6 @@ import android.webkit.CookieManager
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.work.Configuration
 import com.mit.attendance.data.api.HttpClientHolder
-import com.mit.attendance.service.AgentSshService
 import com.mit.attendance.service.AttendanceSyncWorker
 import com.mit.attendance.service.AlertSyncWorker
 
@@ -16,6 +15,7 @@ class MITAttendanceApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        com.mit.attendance.campus.CampusPush.configure(this)
         // Force dark mode globally
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
 
@@ -23,7 +23,6 @@ class MITAttendanceApp : Application(), Configuration.Provider {
         HttpClientHolder.init(this)
         AttendanceSyncWorker.createNotificationChannels(this)
         createAlertNotificationChannel()
-        AgentSshService.createNotificationChannel(this)
 
         // Initialize Global Cookie Manager for WebViews to ensure persistence across sessions
         val cookieManager = CookieManager.getInstance()

@@ -10,7 +10,6 @@ import runpy
 import sys
 import traceback
 import git_manager
-import importlib.util
 
 STORAGE_PATH = None
 _client = None
@@ -67,24 +66,6 @@ def reset_client():
             print(f"Error during client reset: {str(e)}")
         finally:
             _client = None
-
-# --- Automation Runner ---
-
-def run_automation_script_v2(script_path):
-    try:
-        spec = importlib.util.spec_from_file_location("dynamic_script", script_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        if hasattr(module, 'run'):
-            module.run()
-            return "ok"
-        else:
-            return "Error: script has no run() function"
-    except Exception as e:
-        traceback.print_exc()
-        return str(e)
-
 
 def _extract_prompt_text(node):
     if isinstance(node, ast.Constant) and isinstance(node.value, str):

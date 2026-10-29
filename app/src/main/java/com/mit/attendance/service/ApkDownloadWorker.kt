@@ -1,152 +1,164 @@
 package com.mit.attendance.service
 
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.*
 import com.mit.attendance.R
-import com.mit.attendance.data.api.HttpClientHolder
 import com.mit.attendance.storage.OutputDirectoryManager
+import com.mit.attendance.ui.subjects.UpdateInstallActivity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
-class ApkDownloadWorker(
-    private val context: Context,
-    workerParams: WorkerParameters
-) : CoroutineWorker(context, workerParams) {
-
+class ApkDownloadWorker(private val context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     companion object {
         const val KEY_URL = "url"
         const val KEY_TAG_NAME = "tag_name"
         const val NOTIFICATION_ID = 999
-        
-        @Volatile
-        private var isDownloading = false
-        
-        fun isAlreadyDownloading() = isDownloading
+        private const val WORK_NAME = "apk_download_unique"
+        private val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
 
-        fun enqueue(context: Context, url: String, tagName: String) {
-            val data = workDataOf(
-                KEY_URL to url,
-                KEY_TAG_NAME to tagName
-            )
+        fun enqueue(context: Context, url: String, tagName: String, size: Long = 0, digest: String? = null) {
             val request = OneTimeWorkRequestBuilder<ApkDownloadWorker>()
-                .setInputData(data)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
-                )
-                .addTag("apk_download")
-                .build()
-            
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                "apk_download_unique",
-                ExistingWorkPolicy.KEEP,
-                request
-            )
+                .setInputData(workDataOf(KEY_URL to url, KEY_TAG_NAME to tagName,
+                    "size" to size, "digest" to digest))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED)
+                    .setRequiresStorageNotLow(true).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .addTag("apk_download").build()
+            WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.KEEP, request)
         }
     }
 
-    override suspend fun doWork(): Result {
-        val url = inputData.getString(KEY_URL) ?: return Result.failure()
-        val tagName = inputData.getString(KEY_TAG_NAME) ?: return Result.failure()
-        
-        isDownloading = true
-        
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val builder = NotificationCompat.Builder(context, AttendanceSyncWorker.UPDATE_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_download)
-            .setContentTitle("Downloading Update")
-            .setContentText("Version $tagName")
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setProgress(100, 0, false)
-
-        try {
-            val foregroundInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ForegroundInfo(
-                    NOTIFICATION_ID, 
-                    builder.build(),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
-            } else {
-                ForegroundInfo(NOTIFICATION_ID, builder.build())
-            }
-            setForeground(foregroundInfo)
-        } catch (e: Exception) {
-            Log.e("ApkDownloadWorker", "Failed to set foreground", e)
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val url = inputData.getString(KEY_URL) ?: return@withContext Result.failure()
+        val tag = inputData.getString(KEY_TAG_NAME) ?: return@withContext Result.failure()
+        if (!tag.matches(Regex("v[0-9]+")) ||
+            !url.startsWith("https://github.com/makrand999/MIT_Attendance/releases/download/")) {
+            return@withContext Result.failure()
         }
+        val expectedSize = inputData.getLong("size", 0)
+        val digest = inputData.getString("digest")
+        val folder = OutputDirectoryManager.getVersionFolder(context, tag)
+        val destination = File(folder, "MIT_Attendance.apk")
+        val partial = File(folder, "MIT_Attendance.apk.tmp")
+        val builder = NotificationCompat.Builder(context, AttendanceSyncWorker.UPDATE_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_download).setContentTitle("Downloading update $tag")
+            .setOngoing(true).setOnlyAlertOnce(true).setProgress(0, 0, true)
+            .addAction(0, "Cancel", WorkManager.getInstance(context).createCancelPendingIntent(id))
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            val notification = builder.build()
+            setForeground(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                else ForegroundInfo(NOTIFICATION_ID, notification))
 
-        return try {
-            val versionFolder = OutputDirectoryManager.getVersionFolder(context, tagName)
-            val destination = File(versionFolder, "MIT_Attendance.apk")
-            val tempFile = File(versionFolder, "MIT_Attendance.apk.tmp")
-            
-            if (tempFile.exists()) tempFile.delete()
-
-            val request = Request.Builder().url(url).build()
-            val client = HttpClientHolder.client
-            
+            // Resume only when SHA-256 can verify the complete assembled file.
+            val offset = if (digest?.startsWith("sha256:") == true) partial.length() else 0L
+            val request = Request.Builder().url(url).header("Accept-Encoding", "identity")
+                .apply { if (offset > 0) header("Range", "bytes=$offset-") }.build()
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw Exception("Failed to download: ${response.code}")
-                
-                val body = response.body ?: throw Exception("Empty body")
-                val totalBytes = body.contentLength()
-                
-                body.byteStream().use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        val buffer = ByteArray(8 * 1024)
-                        var bytesRead: Int
-                        var downloadedBytes = 0L
-                        var lastProgressUpdate = 0L
-
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            downloadedBytes += bytesRead
-                            
-                            val currentTime = System.currentTimeMillis()
-                            if (totalBytes > 0 && currentTime - lastProgressUpdate > 500) {
-                                val progress = (downloadedBytes * 100 / totalBytes).toInt()
-                                builder.setProgress(100, progress, false)
-                                    .setContentText("Downloading... $progress%")
-                                notificationManager.notify(NOTIFICATION_ID, builder.build())
-                                lastProgressUpdate = currentTime
-                            }
-                        }
+                if (response.code == 416) {
+                    partial.delete()
+                    throw IOException("Partial download needs restarting")
+                }
+                if (response.code == 429 || response.code >= 500) throw IOException("Server temporarily unavailable")
+                require(response.isSuccessful) { "Download failed: ${response.code}" }
+                require(response.request.url.isHttps) { "Insecure download redirect" }
+                val body = response.body ?: throw IOException("Empty download")
+                val append = offset > 0 && response.code == 206
+                if (response.code == 206) {
+                    require(append && response.header("Content-Range")?.startsWith("bytes $offset-") == true) {
+                        "Invalid partial download response"
                     }
                 }
+                var downloaded = if (append) offset else 0L
+                val total = if (expectedSize > 0) expectedSize else
+                    body.contentLength().takeIf { it >= 0 }?.plus(downloaded) ?: -1L
+                var lastUpdate = 0L
+                body.byteStream().use { input ->
+                    FileOutputStream(partial, append).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            downloaded += count
+                            require(expectedSize <= 0 || downloaded <= expectedSize) { "Unexpected APK size" }
+                            if (System.currentTimeMillis() - lastUpdate >= 1000) {
+                                val progress = if (total > 0) (downloaded * 100 / total).toInt().coerceIn(0, 100) else 0
+                                builder.setProgress(100, progress, total <= 0)
+                                manager.notify(NOTIFICATION_ID, builder.build())
+                                setProgress(workDataOf("bytes" to downloaded, "total" to total))
+                                lastUpdate = System.currentTimeMillis()
+                            }
+                        }
+                        output.fd.sync()
+                    }
+                }
+                if (total >= 0 && downloaded != total) throw IOException("Incomplete APK download")
             }
-
-            if (destination.exists()) destination.delete()
-            tempFile.renameTo(destination)
-
-            showFinishedNotification(tagName, true)
-            isDownloading = false
+            if (digest != null) {
+                require(digest.matches(Regex("sha256:[0-9a-fA-F]{64}"))) { "Unsupported APK digest" }
+                val hash = MessageDigest.getInstance("SHA-256")
+                partial.inputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        hash.update(buffer, 0, count)
+                    }
+                }
+                val actual = hash.digest().joinToString("") { "%02x".format(it) }
+                if (!actual.equals(digest.substringAfter(':'), ignoreCase = true)) {
+                    partial.delete()
+                    throw IOException("APK checksum mismatch; restarting download")
+                }
+            }
+            UpdateInstallActivity.validateApk(context, partial, tag.removePrefix("v").toLong())
+            check(partial.renameTo(destination)) { "Could not finalize APK download" }
+            val pending = PendingIntent.getActivity(context, 0,
+                Intent(context, UpdateInstallActivity::class.java)
+                    .putExtra(UpdateInstallActivity.EXTRA_APK_PATH, destination.absolutePath),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            // WorkManager removes its foreground notification on completion; use a separate ID.
+            manager.notify(NOTIFICATION_ID + 1, NotificationCompat.Builder(context, AttendanceSyncWorker.UPDATE_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_download).setContentTitle("Update ready to install")
+                .setContentText("Tap to install $tag").setContentIntent(pending).setAutoCancel(true).build())
             Result.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e("ApkDownloadWorker", "Download failed", e)
-            showFinishedNotification(tagName, false)
-            isDownloading = false
-            Result.failure()
+            Log.e("ApkDownloadWorker", "Update download failed", e)
+            if (e is IOException && runAttemptCount < 5) {
+                Result.retry()
+            } else {
+                partial.delete()
+                manager.notify(NOTIFICATION_ID + 1, NotificationCompat.Builder(context, AttendanceSyncWorker.UPDATE_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("Update download failed")
+                    .setContentText("Open the app and check for updates to try again.").setAutoCancel(true).build())
+                Result.failure()
+            }
         }
-    }
-
-    private fun showFinishedNotification(tagName: String, success: Boolean) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val builder = NotificationCompat.Builder(context, AttendanceSyncWorker.UPDATE_CHANNEL_ID)
-            .setSmallIcon(if (success) R.drawable.ic_download else android.R.drawable.stat_notify_error)
-            .setContentTitle(if (success) "Update Downloaded" else "Download Failed")
-            .setContentText(if (success) "Version $tagName ready to install" else "Failed to download v$tagName")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .setProgress(0, 0, false)
-
-        notificationManager.notify(NOTIFICATION_ID, builder.build())
     }
 }

@@ -5,6 +5,8 @@
 /app/build/
 local.properties
 secrets.properties
+__pycache__/
+*.py[cod]
 
 # ERP API discovery workspace — holds credentials + scraped artifacts.
 # Excluded from the Android build (lives outside app/src/).

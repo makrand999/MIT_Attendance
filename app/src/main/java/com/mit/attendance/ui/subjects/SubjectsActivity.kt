@@ -6,9 +6,6 @@ import android.content.*
 import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -26,8 +23,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import androidx.core.view.GravityCompat
-import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.*
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
@@ -37,16 +32,11 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.card.MaterialCardView
-import com.google.android.material.tabs.TabLayoutMediator
 import com.google.android.material.textfield.TextInputEditText
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.MultiFormatWriter
-import com.google.zxing.WriterException
 import com.mit.attendance.R
 import com.mit.attendance.data.AttendanceRepository
 import com.mit.attendance.databinding.ActivitySubjectsBinding
 import com.mit.attendance.databinding.ActivityErpWebviewBinding
-import com.mit.attendance.databinding.DialogShareQrBinding
 import com.mit.attendance.databinding.ItemHomeToolBinding
 import com.mit.attendance.databinding.ItemSubjectBinding
 import com.mit.attendance.databinding.PageHomeOverviewBinding
@@ -55,22 +45,17 @@ import com.mit.attendance.model.SingleLiveEvent
 import com.mit.attendance.model.SubjectUiModel
 import com.mit.attendance.ui.chat.ChatActivity
 import com.mit.attendance.ui.detail.AttendanceDetailActivity
-import com.mit.attendance.ui.login.LoginActivity
 import com.mit.attendance.ui.practical.PracticalActivity
 import com.mit.attendance.ui.reviews.ReviewsActivity
 import com.mit.attendance.ui.timetable.TimetableActivity
 import com.mit.attendance.data.api.UpdateChecker
 import com.mit.attendance.service.AttendanceSyncWorker
-import com.mit.attendance.ui.certifications.CertificationsActivity
-import com.mit.attendance.ui.agent.AgentActivity
 import com.mit.attendance.ui.alerts.AlertsActivity
 import com.mit.attendance.service.AlertSyncWorker
 import com.mit.attendance.data.api.HttpClientHolder
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -127,10 +112,6 @@ class SubjectsViewModel(private val repo: AttendanceRepository) : ViewModel() {
         viewModelScope.launch { repo.prefs.setUpdateLocked(locked) }
     }
 
-    fun logout() {
-        Log.d(TAG, "Logging out user")
-        viewModelScope.launch { repo.logout() }
-    }
 }
 
 class SubjectsViewModelFactory(private val context: android.content.Context) : ViewModelProvider.Factory {
@@ -145,13 +126,11 @@ class SubjectsViewModelFactory(private val context: android.content.Context) : V
 class SubjectsActivity : AppCompatActivity() {
 
     private val TAG = "SubjectsActivity"
-    private val appUrl = "https://github.com/makrand999/MIT_Attendance/releases/latest"
 
     private lateinit var binding: ActivitySubjectsBinding
     private val viewModel: SubjectsViewModel by viewModels { SubjectsViewModelFactory(applicationContext) }
     private lateinit var homePagerAdapter: SubjectsHomePagerAdapter
     private lateinit var toolsAdapter: HomeToolAdapter
-    private lateinit var universalGestureDetector: GestureDetector
 
     private var notificationsOn = true
     private var latestSubjects: List<SubjectUiModel> = emptyList()
@@ -184,8 +163,6 @@ class SubjectsActivity : AppCompatActivity() {
         supportActionBar?.title = "Attendance Desk"
 
         setupHomePager()
-        setupNavigationDrawer()
-        setupUniversalSwipe()
         observeData()
 
         // Initialize WebView Window Manager
@@ -212,19 +189,7 @@ class SubjectsActivity : AppCompatActivity() {
                     notificationsOn = false
                     viewModel.toggleNotifications(false)
                 }
-                // Update navigation menu if needed
-                val navMenu = binding.navView.menu
-                navMenu.findItem(R.id.action_notifications)?.title =
-                    if (notificationsOn) "Notifications: ON" else "Notifications: OFF"
                 renderOverviewPage()
-            }
-        }
-
-        lifecycleScope.launch {
-            viewModel.isUpdateLocked.collect { isLocked ->
-                val navMenu = binding.navView.menu
-                navMenu.findItem(R.id.action_practical)?.isVisible = isLocked
-                navMenu.findItem(R.id.action_lock)?.title = if (isLocked) "Unlock" else "Lock"
             }
         }
 
@@ -262,9 +227,6 @@ class SubjectsActivity : AppCompatActivity() {
         if (WebViewWindowManager.handleTouchEvent(ev, binding.webViewContainer)) {
             return true
         }
-        if (::universalGestureDetector.isInitialized) {
-            universalGestureDetector.onTouchEvent(ev)
-        }
         return super.dispatchTouchEvent(ev)
     }
 
@@ -298,10 +260,6 @@ class SubjectsActivity : AppCompatActivity() {
             page.alpha = 0.85f + ((1f - abs(position.coerceIn(-1f, 1f))) * 0.15f)
         }
 
-        TabLayoutMediator(binding.homeTabs, binding.homePager) { tab, _ ->
-            tab.text = ""
-        }.attach()
-
         binding.homePager.setCurrentItem(0, false)
     }
 
@@ -327,7 +285,7 @@ class SubjectsActivity : AppCompatActivity() {
         pageBinding.btnQuickAlerts.setOnClickListener { openHomeAction(HomeAction.ALERTS) }
         pageBinding.btnQuickPracticals.setOnClickListener { openHomeAction(HomeAction.PRACTICALS) }
         pageBinding.btnQuickTimetable.setOnClickListener { openHomeAction(HomeAction.TIMETABLE) }
-        pageBinding.btnQuickAgent.setOnClickListener { openHomeAction(HomeAction.AGENT) }
+        pageBinding.btnQuickNotes.setOnClickListener { openHomeAction(HomeAction.NOTES) }
     }
 
     private fun configureToolsPage(pageBinding: PageHomeToolsBinding) {
@@ -337,14 +295,12 @@ class SubjectsActivity : AppCompatActivity() {
 
     private fun buildToolItems(): List<HomeToolItem> {
         return listOf(
+            HomeToolItem(HomeAction.CAMPUS, R.drawable.ic_school, "Akatsuki", "Opportunities & chat"),
             HomeToolItem(HomeAction.ALERTS, R.drawable.ic_alert, "Alerts", "Reminders"),
             HomeToolItem(HomeAction.PRACTICALS, R.drawable.ic_code, "Practicals", "Submissions"),
             HomeToolItem(HomeAction.TIMETABLE, R.drawable.ic_dashboard, "Timetable", "Schedule"),
             HomeToolItem(HomeAction.NOTES, R.drawable.ic_folder, "Notes", "Files"),
-            HomeToolItem(HomeAction.EDITOR, R.drawable.ic_cut, "Editor", "Crop"),
-            HomeToolItem(HomeAction.AGENT, R.drawable.ic_terminal, "Agent", "Assistant"),
             HomeToolItem(HomeAction.CHAT, R.drawable.ic_gpt, "Chat", "Messages"),
-            HomeToolItem(HomeAction.CERTIFICATIONS, R.drawable.ic_cloud, "Certificates", "Awards"),
             HomeToolItem(HomeAction.ERP, R.drawable.ic_browser, "ERP", "Portal"),
             HomeToolItem(HomeAction.EXAM_CELL, R.drawable.ic_school, "Exam Cell", "Exams"),
             HomeToolItem(HomeAction.REVIEWS, R.drawable.ic_devices, "Reviews", "Ratings"),
@@ -490,175 +446,13 @@ class SubjectsActivity : AppCompatActivity() {
         homePagerAdapter.overviewBinding?.overviewSwipeRefresh?.isRefreshing = refreshing
     }
 
-    private fun setupUniversalSwipe() {
-        universalGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                if (e1 == null) return false
-                val diffX = e2.x - e1.x
-                val diffY = e2.y - e1.y
-
-                val swipeThreshold = 100
-                val swipeVelocityThreshold = 100
-                val drawerEdgeThreshold = 32f * resources.displayMetrics.density
-
-                if (
-                    abs(diffX) > abs(diffY) &&
-                    diffX > swipeThreshold &&
-                    abs(velocityX) > swipeVelocityThreshold &&
-                    e1.x <= drawerEdgeThreshold
-                ) {
-                    if (!binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
-                        binding.drawerLayout.openDrawer(GravityCompat.START)
-                        return true
-                    }
-                }
-                return false
-            }
-        })
-    }
-
-    private fun setupNavigationDrawer() {
-        Log.d(TAG, "Setting up Navigation Drawer")
-        // Set drawer width to 70% as requested
-        val displayMetrics = resources.displayMetrics
-        val params = binding.navView.layoutParams
-        params.width = (displayMetrics.widthPixels * 0.7).toInt()
-        binding.navView.layoutParams = params
-
-        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
-            override fun onDrawerSlide(drawerView: View, slideOffset: Float) {
-                // Blur effect: decrease alpha/scale of main content as drawer opens
-                val alpha = 1f - (slideOffset * 0.6f) // Fade to 40% opacity
-                binding.mainContent.alpha = alpha
-                binding.mainContent.scaleX = 1f - (slideOffset * 0.05f) // Slight shrink
-                binding.mainContent.scaleY = 1f - (slideOffset * 0.05f)
-
-                // Real Blur for Android 12+
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val blurRadius = slideOffset * 30f // Max blur 30px
-                    if (blurRadius > 0.1f) {
-                        binding.mainContent.setRenderEffect(
-                            RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP)
-                        )
-                    } else {
-                        binding.mainContent.setRenderEffect(null)
-                    }
-                }
-            }
-        })
-
-        binding.navView.setNavigationItemSelectedListener { menuItem ->
-            Log.d(TAG, "Navigation item selected: ${menuItem.title}")
-            if (menuItem.itemId == R.id.action_share) {
-                binding.drawerLayout.closeDrawer(GravityCompat.START)
-                binding.root.postDelayed({
-                    showShareQrDialog()
-                }, 200)
-            } else if (menuItem.itemId == R.id.action_update) {
-                binding.drawerLayout.closeDrawer(GravityCompat.START)
-                binding.root.postDelayed({
-                    lifecycleScope.launch {
-                        UpdateChecker.checkForUpdates(this@SubjectsActivity, true)
-                    }
-                }, 300)
-            } else {
-                handleMenuItem(menuItem)
-                binding.drawerLayout.closeDrawer(GravityCompat.START)
-            }
-            true
-        }
-
-        // Setup Toolbar Navigation Icon
-        binding.toolbar.setNavigationIcon(R.drawable.ic_back)
-        binding.toolbar.navigationIcon?.setTint(ContextCompat.getColor(this, R.color.medkit_line))
-        binding.toolbar.setNavigationOnClickListener {
-            binding.drawerLayout.openDrawer(GravityCompat.START)
-        }
-    }
-
-    private fun handleMenuItem(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_erp -> {
-                openHomeAction(HomeAction.ERP)
-                true
-            }
-            R.id.action_exam_cell -> {
-                openHomeAction(HomeAction.EXAM_CELL)
-                true
-            }
-            R.id.action_agent -> {
-                openHomeAction(HomeAction.AGENT)
-                true
-            }
-            R.id.action_notes -> {
-                openHomeAction(HomeAction.NOTES)
-                true
-            }
-            R.id.action_timetable -> {
-                openHomeAction(HomeAction.TIMETABLE)
-                true
-            }
-            R.id.action_chat -> {
-                openHomeAction(HomeAction.CHAT)
-                true
-            }
-            R.id.action_alerts -> {
-                openHomeAction(HomeAction.ALERTS)
-                true
-            }
-            R.id.action_practical -> {
-                openHomeAction(HomeAction.PRACTICALS)
-                true
-            }
-            R.id.action_reviews -> {
-                openHomeAction(HomeAction.REVIEWS)
-                true
-            }
-            R.id.action_certifications -> {
-                openHomeAction(HomeAction.CERTIFICATIONS)
-                true
-            }
-            R.id.action_notifications -> {
-                handleNotificationToggle()
-                true
-            }
-            R.id.action_customize -> {
-                openHomeAction(HomeAction.CUSTOMIZE)
-                true
-            }
-            R.id.action_lock -> {
-                showLockPasswordDialog()
-                true
-            }
-            R.id.action_update -> {
-                // Handled in setNavigationItemSelectedListener for smoother closing
-                true
-            }
-            R.id.action_logout -> {
-                viewModel.logout()
-                startActivity(Intent(this, LoginActivity::class.java))
-                finish()
-                true
-            }
-            else -> false
-        }
-    }
-
     private fun openHomeAction(action: HomeAction) {
         when (action) {
+            HomeAction.CAMPUS -> startActivity(Intent(this, com.mit.attendance.campus.CampusActivity::class.java))
             HomeAction.ERP -> openErpWebView()
             HomeAction.EXAM_CELL -> openExamCellWebView()
-            HomeAction.AGENT -> startActivity(Intent(this, AgentActivity::class.java))
             HomeAction.NOTES -> {
-                val intent = Intent(this, NotesActivity::class.java).apply {
-                    putExtra(NotesActivity.EXTRA_TYPE, NotesActivity.TYPE_NOTES)
-                }
-                startActivity(intent)
-            }
-            HomeAction.EDITOR -> {
-                val intent = Intent(this, NotesActivity::class.java).apply {
-                    putExtra(NotesActivity.EXTRA_TYPE, NotesActivity.TYPE_EDITOR)
-                }
+                val intent = Intent(this, NotesLibraryActivity::class.java)
                 startActivity(intent)
             }
             HomeAction.TIMETABLE -> startActivity(Intent(this, TimetableActivity::class.java))
@@ -672,7 +466,6 @@ class SubjectsActivity : AppCompatActivity() {
                 }
             }
             HomeAction.REVIEWS -> startActivity(Intent(this, ReviewsActivity::class.java))
-            HomeAction.CERTIFICATIONS -> startActivity(Intent(this, CertificationsActivity::class.java))
             HomeAction.CUSTOMIZE -> startActivity(Intent(this, CustomizeActivity::class.java))
         }
     }
@@ -777,90 +570,6 @@ class SubjectsActivity : AppCompatActivity() {
 
         examBinding.webView.loadUrl("https://mitaexamcell.in/Login.aspx")
         WebViewWindowManager.addWebView(binding.webViewContainer, examBinding.root)
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun showShareQrDialog() {
-        val dialogBinding = DialogShareQrBinding.inflate(layoutInflater)
-
-        val dialog = AlertDialog.Builder(this, R.style.TransparentDialog)
-            .setView(dialogBinding.root)
-            .create()
-
-        lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.Default) {
-                generateQrCodeBitmap(appUrl, Color.WHITE, Color.TRANSPARENT)
-            }
-            dialogBinding.ivQrCode.setImageBitmap(bitmap)
-        }
-
-        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                val dx = e2.x - (e1?.x ?: 0f)
-                val dy = e2.y - (e1?.y ?: 0f)
-
-                if (abs(dy) > abs(dx) && dy > 100) {
-                    // Swipe Down: Animation + Generate QR from clipboard
-                    dialogBinding.ivQrCode.animate()
-                        .translationY(60f)
-                        .setDuration(200)
-                        .withEndAction {
-                            dialogBinding.ivQrCode.animate().translationY(0f).setDuration(200).start()
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = clipboard.primaryClip
-                            if (clip != null && clip.itemCount > 0) {
-                                val pasteText = clip.getItemAt(0).text.toString()
-                                lifecycleScope.launch {
-                                    val bitmap = withContext(Dispatchers.Default) {
-                                        generateQrCodeBitmap(pasteText, Color.WHITE, Color.TRANSPARENT)
-                                    }
-                                    dialogBinding.ivQrCode.setImageBitmap(bitmap)
-                                }
-                            }
-                        }.start()
-                    return true
-                } else if (abs(dx) > abs(dy) && dx > 100) {
-                    // Swipe Right: Disappear to right + Copy app URL
-                    dialogBinding.ivQrCode.animate()
-                        .translationX(1200f)
-                        .alpha(0f)
-                        .setDuration(400)
-                        .withEndAction {
-                            dialog.dismiss()
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("App Link", appUrl)
-                            clipboard.setPrimaryClip(clip)
-                        }.start()
-                    return true
-                }
-                return false
-            }
-        })
-
-        dialogBinding.ivQrCode.setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            true
-        }
-
-        dialog.show()
-    }
-
-    private fun generateQrCodeBitmap(text: String, foreground: Int = Color.BLACK, background: Int = Color.WHITE): Bitmap? {
-        try {
-            val bitMatrix = MultiFormatWriter().encode(text, BarcodeFormat.QR_CODE, 512, 512)
-            val width = bitMatrix.width
-            val height = bitMatrix.height
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            for (x in 0 until width) {
-                for (y in 0 until height) {
-                    bitmap.setPixel(x, y, if (bitMatrix.get(x, y)) foreground else background)
-                }
-            }
-            return bitmap
-        } catch (e: WriterException) {
-            e.printStackTrace()
-            return null
-        }
     }
 
     private fun showLockPasswordDialog() {
@@ -1073,14 +782,12 @@ class SubjectAdapter(
 }
 
 private enum class HomeAction {
+    CAMPUS,
     ALERTS,
     PRACTICALS,
     TIMETABLE,
     NOTES,
-    EDITOR,
-    AGENT,
     CHAT,
-    CERTIFICATIONS,
     ERP,
     EXAM_CELL,
     REVIEWS,

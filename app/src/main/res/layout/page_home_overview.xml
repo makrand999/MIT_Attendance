@@ -443,14 +443,14 @@
                     android:layout_height="1dp" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_quick_agent"
+                    android:id="@+id/btn_quick_notes"
                     style="@style/Widget.MITAttendance.MedKitButton.Sky"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Agent"
+                    android:text="Notes"
                     android:textAllCaps="false"
-                    app:icon="@drawable/ic_terminal"
+                    app:icon="@drawable/ic_folder"
                     app:iconPadding="10dp" />
             </LinearLayout>
 

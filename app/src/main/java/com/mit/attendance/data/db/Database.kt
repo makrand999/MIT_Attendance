@@ -5,6 +5,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.*
 import com.mit.attendance.model.*
+import com.mit.attendance.campus.*
 import kotlinx.coroutines.flow.Flow
 
 // ── Subject DAO ───────────────────────────────────────────────────────────────
@@ -29,7 +30,7 @@ interface SubjectDao {
         SELECT 
             s.*, 
             (SELECT COUNT(*) FROM attendance_records a WHERE a.subjectName = s.subjectName AND a.isNew = 1) as newCount,
-            (SELECT COUNT(*) FROM alerts al WHERE al.subject = s.subjectName AND al.seen = 0 AND al.isHidden = 0) as newAlertCount,
+            (SELECT COUNT(*) FROM campus_alerts al JOIN campus_active ac ON ac.account=al.account AND ac.classId=al.classId JOIN campus_subject_links sl ON sl.account=al.account AND sl.classId=al.classId AND sl.subjectId=al.subjectId LEFT JOIN campus_states st ON st.account=al.account AND st.classId=al.classId AND st.alertId=al.id WHERE sl.localName=s.subjectName AND al.status='PUBLISHED' AND COALESCE(st.seen,0)=0 AND COALESCE(st.hidden,0)=0 AND COALESCE(st.trashed,0)=0) as newAlertCount,
             (SELECT COUNT(*) FROM attendance_records a WHERE a.subjectName = s.subjectName AND a.status = 'P') as actualPresent,
             (SELECT COUNT(*) FROM attendance_records a WHERE a.subjectName = s.subjectName AND a.status = 'A') as actualAbsent,
             (SELECT COUNT(*) FROM attendance_records a WHERE a.subjectName = s.subjectName) as actualTotal
@@ -195,9 +196,10 @@ interface PracticalDao {
         PracticalDraft::class,
         PracticalSubject::class,
         Practical::class,
-        AlertEntity::class
+        AlertEntity::class, CachedCampusAlert::class, CampusPersonalState::class, CampusCursor::class,
+        CampusDirectory::class, CampusOutgoing::class, CampusSubjectLink::class, CampusActive::class, CampusNotification::class
     ], 
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -206,6 +208,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun reviewDao(): ReviewDao
     abstract fun practicalDraftDao(): PracticalDraftDao
     abstract fun practicalDao(): PracticalDao
+    abstract fun campusDao(): CampusDao
     abstract fun alertDao(): AlertDao
 
     companion object {
@@ -252,6 +255,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_alerts (account TEXT NOT NULL,classId TEXT NOT NULL,id TEXT NOT NULL,subjectId TEXT,status TEXT NOT NULL,version INTEGER NOT NULL,topic TEXT NOT NULL,description TEXT NOT NULL,authorId TEXT,authorName TEXT NOT NULL,type TEXT NOT NULL,dueAt TEXT,expiresAt TEXT,json TEXT NOT NULL,PRIMARY KEY(account,classId,id))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_states (account TEXT NOT NULL,classId TEXT NOT NULL,alertId TEXT NOT NULL,seen INTEGER NOT NULL,hidden INTEGER NOT NULL,trashed INTEGER NOT NULL,pendingKey TEXT,confirmedJson TEXT,PRIMARY KEY(account,classId,alertId))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_cursor (account TEXT NOT NULL,classId TEXT NOT NULL,cursor TEXT NOT NULL,initialized INTEGER NOT NULL,PRIMARY KEY(account,classId))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_directory (account TEXT NOT NULL,kind TEXT NOT NULL,parent TEXT NOT NULL,id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(account,kind,parent,id))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_outgoing (`key` TEXT NOT NULL,account TEXT NOT NULL,classId TEXT NOT NULL,resourceId TEXT NOT NULL,method TEXT NOT NULL,path TEXT NOT NULL,body TEXT NOT NULL,status TEXT NOT NULL,error TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(`key`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_subject_links (account TEXT NOT NULL,classId TEXT NOT NULL,localName TEXT NOT NULL,subjectId TEXT NOT NULL,PRIMARY KEY(account,classId,localName))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_active (slot INTEGER NOT NULL,account TEXT NOT NULL,classId TEXT NOT NULL,generation TEXT NOT NULL,PRIMARY KEY(slot))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_notifications (account TEXT NOT NULL,classId TEXT NOT NULL,alertId TEXT NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(account,classId,alertId,version))")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -266,6 +282,7 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(MIGRATION_11_12)
                 .addMigrations(MIGRATION_12_13)
                 .addMigrations(MIGRATION_13_14)
+                .addMigrations(MIGRATION_14_15)
                 .build()
                 INSTANCE = instance
                 instance

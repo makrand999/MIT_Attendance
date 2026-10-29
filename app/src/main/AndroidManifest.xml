@@ -27,6 +27,30 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
+        <service android:name=".campus.CampusMessagingService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+        </service>
+        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="false" />
+        <activity android:name=".campus.CampusLinkActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mitattendance" android:host="campus" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="mitasia.in" android:pathPrefix="/akatsuki/" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".campus.CampusAlertsActivity" android:exported="false" />
+        <activity android:name=".campus.CampusOpportunitiesActivity" android:exported="false" />
+        <receiver android:name=".campus.CampusReminderReceiver" android:exported="false" />
+        <activity android:name=".campus.CampusActivity" android:exported="false" />
+
         <receiver
             android:name=".ui.alerts.AlertReminderReceiver"
             android:exported="false" />
@@ -56,6 +80,16 @@
             android:theme="@style/Theme.MITAttendance" />
 
         <activity
+            android:name=".ui.subjects.UpdateInstallActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MITAttendance" />
+
+        <activity
+            android:name=".ui.subjects.NotesLibraryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MITAttendance" />
+
+        <activity
             android:name=".ui.subjects.NotesActivity"
             android:exported="true"
             android:label="File Explorer"
@@ -73,17 +107,7 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name="com.yalantis.ucrop.UCropActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
-        <activity
-            android:name="com.mit.attendance.ui.subjects.editor.EditorCropActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <activity
             android:name=".ui.subjects.CustomizeActivity"
@@ -172,47 +196,11 @@
             android:parentActivityName=".ui.subjects.SubjectsActivity"
             android:theme="@style/Theme.MITAttendance" />
 
-        <activity
-            android:name=".ui.microsoft.MicrosoftLearnActivity"
-            android:exported="false"
-            android:label="Microsoft Learn"
-            android:parentActivityName=".ui.certifications.CertificationsActivity"
-            android:theme="@style/Theme.MITAttendance" />
 
-        <activity
-            android:name=".ui.certifications.CertificationsActivity"
-            android:exported="false"
-            android:label="Certifications"
-            android:parentActivityName=".ui.subjects.SubjectsActivity"
-            android:theme="@style/Theme.MITAttendance" />
 
-        <activity
-            android:name=".ui.certifications.DynamicCertificationsActivity"
-            android:exported="false"
-            android:label="Dynamic Certifications"
-            android:parentActivityName=".ui.certifications.CertificationsActivity"
-            android:theme="@style/Theme.MITAttendance" />
 
-        <activity
-            android:name=".ui.agent.AgentActivity"
-            android:exported="false"
-            android:label=""
-            android:parentActivityName=".ui.subjects.SubjectsActivity"
-            android:theme="@style/Theme.MITAttendance"
-            android:windowSoftInputMode="adjustResize" />
 
-        <activity
-            android:name=".ui.agent.QwenAuthActivity"
-            android:exported="false"
-            android:label="Qwen Login"
-            android:theme="@style/Theme.MITAttendance" />
 
-        <service
-            android:name=".service.AgentSshService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="dataSync"
-            android:stopWithTask="false" />
 
         <!-- WorkManager's foreground-service host for downloading APK updates.
              The ApkDownloadWorker calls setForeground() with type DATA_SYNC, so the

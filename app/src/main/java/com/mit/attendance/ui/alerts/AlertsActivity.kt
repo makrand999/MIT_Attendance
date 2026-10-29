@@ -20,6 +20,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModel
+import com.mit.attendance.model.SingleLiveEvent
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
@@ -52,6 +53,7 @@ class AlertsViewModel(
     val alerts = repository.getAlertsFlow()
     val trashAlerts = repository.getTrashAlertsFlow()
     val subjects = attendanceRepo.getSubjectsFlow()
+    val messages = SingleLiveEvent<String>()
 
     fun fetchAlerts() {
         viewModelScope.launch {
@@ -62,13 +64,15 @@ class AlertsViewModel(
 
     fun postAlert(type: String, subject: String, topic: String, description: String, endDate: String) {
         viewModelScope.launch {
-            repository.postAlert(type, subject, topic, description, endDate)
+            val success = repository.postAlert(type, subject, topic, description, endDate)
+            messages.call(if (success) "Alert posted" else
+                "Legacy alerts are read only. Post new alerts from Campus.")
         }
     }
 
     fun deleteAlert(alert: AlertEntity) {
         viewModelScope.launch {
-            repository.deleteAlert(alert)
+            if (!repository.deleteAlert(alert)) messages.call("Could not hide this legacy alert.")
         }
     }
 
@@ -120,8 +124,13 @@ class AlertsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!intent.getBooleanExtra("legacy", false)) {
+            startActivity(Intent(this, com.mit.attendance.campus.CampusAlertsActivity::class.java).apply { putExtra(EXTRA_FILTER_SUBJECT,intent.getStringExtra(EXTRA_FILTER_SUBJECT)) })
+            finish(); return
+        }
         binding = ActivityAlertsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        viewModel.messages.observe(this) { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
 
         filterSubject = intent.getStringExtra(EXTRA_FILTER_SUBJECT)
         if (filterSubject != null) {
@@ -142,6 +151,7 @@ class AlertsActivity : AppCompatActivity() {
         MedKitMotion.applyFloat(binding.fabAddAlert, distanceDp = 4f, durationMs = 2400L)
         MedKitMotion.applyRecyclerStagger(binding.rvAlerts)
 
+        binding.fabAddAlert.visibility = View.GONE
         binding.fabAddAlert.setOnClickListener {
             showAddAlertDialog()
         }
@@ -228,11 +238,11 @@ class AlertsActivity : AppCompatActivity() {
                 if (showTrash) {
                     "Trash is empty right now."
                 } else {
-                    "No active alerts yet. Use the add button to post an update."
+                    "Legacy alerts are read only. Post new alerts from Campus."
                 }
             } else {
                 if (showTrash) {
-                    "Restore alerts from trash or delete them permanently."
+                    "Restore personal legacy trash or hide an item locally."
                 } else {
                     "Long-press any alert to schedule a reminder."
                 }
@@ -247,7 +257,7 @@ class AlertsActivity : AppCompatActivity() {
                     "Tap a card to expand details, then long-press if you want a reminder."
                 }
             }
-        binding.fabAddAlert.visibility = if (showTrash) View.GONE else View.VISIBLE
+        binding.fabAddAlert.visibility = View.GONE
     }
 
     private fun showReminderDialog(alert: AlertEntity) {

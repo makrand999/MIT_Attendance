@@ -1,6 +1,7 @@
 package com.mit.attendance.data.prefs
 
 import android.content.Context
+import com.mit.attendance.auth.GitHubAccountStore
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
@@ -30,9 +31,6 @@ class UserPreferences(private val context: Context) {
         private val KEY_UPDATE_LOCKED             = booleanPreferencesKey("update_locked")
         private val KEY_BG_DETAIL_URI             = stringPreferencesKey("bg_detail_uri")
         private val KEY_BG_NAV_URI                = stringPreferencesKey("bg_nav_uri")
-        private val KEY_TERMINAL_SWIPE_TYPING     = booleanPreferencesKey("terminal_swipe_typing")
-        private val KEY_AGENT_SELECTED_PROJECT    = stringPreferencesKey("agent_selected_project")
-        private val KEY_CERTIFICATION_PROXIES     = stringPreferencesKey("certification_proxies")
         
         // Profile keys
         private val KEY_ROLL_NO                   = stringPreferencesKey("roll_no")
@@ -85,8 +83,6 @@ class UserPreferences(private val context: Context) {
     val bgNavUri: Flow<String?> = context.dataStore.data
         .map { it[KEY_BG_NAV_URI] }
 
-    val terminalSwipeTypingEnabled: Flow<Boolean> = context.dataStore.data
-        .map { it[KEY_TERMINAL_SWIPE_TYPING] ?: false }
 
     val rollNo: Flow<String?> = context.dataStore.data.map { it[KEY_ROLL_NO] }
     val mobileNo: Flow<String?> = context.dataStore.data.map { it[KEY_MOBILE_NO] }
@@ -94,16 +90,21 @@ class UserPreferences(private val context: Context) {
     val courseName: Flow<String?> = context.dataStore.data.map { it[KEY_COURSE_NAME] }
     val courseGistId: Flow<String?> = context.dataStore.data.map { it[KEY_COURSE_GIST_ID] }
     val alertVersion: Flow<Int> = context.dataStore.data.map { it[KEY_ALERT_VERSION] ?: 0 }
-    val certificationProxies: Flow<List<String>> = context.dataStore.data
-        .map { decodeCertificationProxies(it[KEY_CERTIFICATION_PROXIES]) }
 
     suspend fun saveCredentials(email: String, password: String, semId: Int) {
+        val previous = getCredentialsSnapshot()
+        val changed = previous.email != email || previous.password != password
+        if (changed) {
+            com.mit.attendance.campus.CampusSessionStore(context).signOut()
+            com.mit.attendance.data.db.AppDatabase.getDatabase(context).campusDao().clearActive()
+        }
         context.dataStore.edit {
             it[KEY_EMAIL]        = email
             it[KEY_PASSWORD]     = password
             it[KEY_SEM_ID]       = semId
             it[KEY_IS_LOGGED_IN] = true
         }
+        if (changed) com.mit.attendance.campus.CampusSessionStore(context).signOut()
     }
 
     suspend fun saveGender(gender: String) {
@@ -149,6 +150,7 @@ class UserPreferences(private val context: Context) {
 
     suspend fun setNotificationsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[KEY_NOTIFICATIONS] = enabled }
+        com.mit.attendance.campus.CampusSessionStore(context).read()?.let { com.mit.attendance.campus.CampusPush.bind(context,it) }
     }
 
     suspend fun setHasRequestedNotifPermission(requested: Boolean) {
@@ -196,42 +198,12 @@ class UserPreferences(private val context: Context) {
         }
     }
 
-    suspend fun setTerminalSwipeTypingEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[KEY_TERMINAL_SWIPE_TYPING] = enabled }
-    }
-
-    suspend fun isTerminalSwipeTypingEnabled(): Boolean =
-        context.dataStore.data.first()[KEY_TERMINAL_SWIPE_TYPING] ?: false
-
-    suspend fun setAgentSelectedProject(project: String?) {
-        context.dataStore.edit {
-            if (project.isNullOrBlank()) {
-                it.remove(KEY_AGENT_SELECTED_PROJECT)
-            } else {
-                it[KEY_AGENT_SELECTED_PROJECT] = project
-            }
-        }
-    }
-
-    suspend fun getAgentSelectedProject(): String? =
-        context.dataStore.data.first()[KEY_AGENT_SELECTED_PROJECT]
-
     suspend fun saveCourseGistId(gistId: String) {
         context.dataStore.edit { it[KEY_COURSE_GIST_ID] = gistId }
     }
 
     suspend fun saveAlertVersion(version: Int) {
         context.dataStore.edit { it[KEY_ALERT_VERSION] = version }
-    }
-
-    suspend fun saveCertificationProxies(proxies: List<String>) {
-        context.dataStore.edit {
-            if (proxies.isEmpty()) {
-                it.remove(KEY_CERTIFICATION_PROXIES)
-            } else {
-                it[KEY_CERTIFICATION_PROXIES] = proxies.joinToString("\n")
-            }
-        }
     }
 
     suspend fun savePracticalTheoryPrompt(prompt: String?) {
@@ -253,6 +225,9 @@ class UserPreferences(private val context: Context) {
      * like background images, notification settings, and timetable.
      */
     suspend fun clearAccountData() {
+        com.mit.attendance.campus.CampusSessionStore(context).signOut()
+        com.mit.attendance.data.db.AppDatabase.getDatabase(context).campusDao().clearActive()
+        GitHubAccountStore(context).disconnect()
         context.dataStore.edit {
             it.remove(KEY_EMAIL)
             it.remove(KEY_PASSWORD)
@@ -279,6 +254,9 @@ class UserPreferences(private val context: Context) {
     }
 
     suspend fun clearAll() {
+        com.mit.attendance.campus.CampusSessionStore(context).signOut()
+        com.mit.attendance.data.db.AppDatabase.getDatabase(context).campusDao().clearActive()
+        GitHubAccountStore(context).disconnect()
         context.dataStore.edit { it.clear() }
     }
 
@@ -358,10 +336,6 @@ class UserPreferences(private val context: Context) {
         return context.dataStore.data.first()[KEY_ALERT_VERSION] ?: 0
     }
 
-    suspend fun getCertificationProxies(): List<String> {
-        return decodeCertificationProxies(context.dataStore.data.first()[KEY_CERTIFICATION_PROXIES])
-    }
-
     /**
      * Returns a snapshot of credentials as a [UserCredentials] for one-time use
      * (e.g. in suspend functions that need email/password/semId together).
@@ -387,12 +361,5 @@ class UserPreferences(private val context: Context) {
     suspend fun isUpdateLockedSnapshot(): Boolean =
         context.dataStore.data.first()[KEY_UPDATE_LOCKED] ?: false
 
-    private fun decodeCertificationProxies(raw: String?): List<String> {
-        return raw
-            ?.lineSequence()
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?.toList()
-            ?: emptyList()
-    }
+
 }

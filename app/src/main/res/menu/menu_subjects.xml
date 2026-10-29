@@ -2,12 +2,6 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <item
-        android:id="@+id/action_agent"
-        android:icon="@drawable/ic_terminal"
-        android:title="Agent"
-        android:orderInCategory="5"
-        app:showAsAction="never" />
 
     <item
         android:id="@+id/action_notes"
@@ -66,12 +60,6 @@
         android:orderInCategory="60"
         app:showAsAction="never" />
 
-    <item
-        android:id="@+id/action_certifications"
-        android:icon="@drawable/ic_cloud"
-        android:title="Certifications"
-        android:orderInCategory="70"
-        app:showAsAction="never" />
 
     <item
         android:id="@+id/action_notifications"

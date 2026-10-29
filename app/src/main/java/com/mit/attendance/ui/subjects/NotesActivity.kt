@@ -4,11 +4,8 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -39,13 +36,12 @@ import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.mit.attendance.R
 import com.mit.attendance.auth.GoogleAccountBackupManager
-import com.mit.attendance.BuildConfig
+import com.mit.attendance.auth.GitHubAccountStore
 import com.mit.attendance.data.AttendanceRepository
-import com.mit.attendance.databinding.ActivityAgentFileExplorerBinding
+import com.mit.attendance.databinding.ActivityFileExplorerBinding
 import com.mit.attendance.databinding.ActivityErpWebviewBinding
 import com.mit.attendance.databinding.ItemFileExplorerBinding
 import com.mit.attendance.storage.OutputDirectoryManager
-import com.mit.attendance.ui.subjects.editor.EditorCropActivity
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -71,15 +67,15 @@ class NotesActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_TYPE = "explorer_type"
-        const val EXTRA_AGENT_ROOT_SUBDIR = "agent_root_subdir"
         const val EXTRA_INITIAL_RELATIVE_PATH = "initial_relative_path"
+        const val EXTRA_NOTES_FOLDER = "notes_folder"
+        const val EXTRA_NOTES_SUBJECT = "notes_subject"
         const val TYPE_NOTES = "notes"
-        const val TYPE_AGENT = "agent"
+        const val TYPE_LOCAL_NOTES = "local_notes"
         const val TYPE_UPDATE = "update"
-        const val TYPE_EDITOR = "editor"
     }
 
-    private lateinit var binding: ActivityAgentFileExplorerBinding
+    private lateinit var binding: ActivityFileExplorerBinding
     private lateinit var explorerAdapter: FileExplorerAdapter
     private var currentDirectory: File? = null
     private var rootDirectory: File? = null
@@ -91,7 +87,8 @@ class NotesActivity : AppCompatActivity() {
     private var editorDirty = false
 
     private lateinit var repo: AttendanceRepository
-    private val githubToken = BuildConfig.GITHUB_TOKEN_MAIN
+    private val githubToken: String get() = GitHubAccountStore(this).account()?.token.orEmpty()
+    private var notesSyncRunning = false
 
     private var isEditMode = false
     private val selectedFiles = mutableSetOf<File>()
@@ -119,9 +116,6 @@ class NotesActivity : AppCompatActivity() {
     private var pythonRunnerMode: String = "input"
     private val pythonFieldViews = linkedMapOf<String, PythonFieldViewState>()
     private var textEditorFile: File? = null
-    private var currentImageFile: File? = null
-    private var currentCropMetadata: EditorCropMetadata? = null
-    private var cropOutputFile: File? = null
     private val longPressRunnable = Runnable {
         showLongPressMenu()
     }
@@ -131,21 +125,6 @@ class NotesActivity : AppCompatActivity() {
     private val pythonFilePickerLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             handlePythonFilePicked(uri)
-        }
-
-    private val replacementImagePickerLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            handleReplacementImagePicked(uri)
-        }
-
-    private val importImageLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            handleImportedImage(uri)
-        }
-
-    private val cropResultLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            handleCropResult(result.resultCode, result.data)
         }
 
     private data class PythonInputSpec(
@@ -172,34 +151,30 @@ class NotesActivity : AppCompatActivity() {
         val boolInput: CheckBox? = null
     )
 
-    private data class EditorCropMetadata(
-        val sourcePath: String,
-        val sourceName: String,
-        val cropPath: String,
-        val cropName: String,
-        val offsetX: Int,
-        val offsetY: Int,
-        val width: Int,
-        val height: Int,
-        val imageWidth: Int,
-        val imageHeight: Int,
-        val aspectRatioX: Int,
-        val aspectRatioY: Int
-    )
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityAgentFileExplorerBinding.inflate(layoutInflater)
+        binding = ActivityFileExplorerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         repo = AttendanceRepository(this)
         explorerType = intent.getStringExtra(EXTRA_TYPE) ?: TYPE_NOTES
         initialRelativePath = intent.getStringExtra(EXTRA_INITIAL_RELATIVE_PATH)?.takeIf { it.isNotBlank() }
 
+        val account = GitHubAccountStore(this).account()
+        val notesFolder = intent.getStringExtra(EXTRA_NOTES_FOLDER)?.let { File(it).canonicalFile }
+        if (explorerType == TYPE_NOTES) {
+            val accountRoot = account?.let { File(OutputDirectoryManager.getNotesFolder(this), it.username.lowercase(Locale.ROOT)).canonicalFile }
+            if (notesFolder == null || accountRoot == null || !notesFolder.isDirectory ||
+                !notesFolder.path.startsWith(accountRoot.path + File.separator)) {
+                startActivity(Intent(this, NotesLibraryActivity::class.java))
+                finish()
+                return
+            }
+        }
+
         rootDirectory = when(explorerType) {
-            TYPE_AGENT -> resolveAgentRootDirectory()
             TYPE_UPDATE -> OutputDirectoryManager.getUpdatesFolder(this)
-            TYPE_EDITOR -> OutputDirectoryManager.getEditorFolder(this)
+            TYPE_NOTES -> notesFolder!!
             else -> OutputDirectoryManager.getNotesFolder(this) 
         }
         currentDirectory = rootDirectory
@@ -223,83 +198,71 @@ class NotesActivity : AppCompatActivity() {
 
         WebViewWindowManager.init(this)
 
-        if (explorerType == TYPE_NOTES) {
-            lifecycleScope.launch {
-                val courseName = repo.prefs.getCourseNameSnapshot()
-                if (courseName != null) {
-                    val notesRoot = OutputDirectoryManager.getNotesFolder(this@NotesActivity)
-                    val courseDir = File(notesRoot, sanitizeRepoName(courseName))
-                    if (!courseDir.exists()) courseDir.mkdirs()
+        browseFiles(currentDirectory)
+    }
+
+    private fun pushNotes() = syncNotes(true)
+    private fun pullNotes() = syncNotes(false)
+
+    private fun syncNotes(push: Boolean, choices: JSONObject? = null) {
+        if (notesSyncRunning || explorerType != TYPE_NOTES) return
+        if (editorDirty) {
+            Toast.makeText(this, "Save your open file before syncing.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val account = GitHubAccountStore(this).account() ?: run {
+            startActivity(Intent(this, NotesLibraryActivity::class.java))
+            return
+        }
+        notesSyncRunning = true
+        val progress = AlertDialog.Builder(this)
+            .setMessage(if (push) "Saving and pushing private notes…" else "Getting notes updates…")
+            .setCancelable(false).show()
+        lifecycleScope.launch {
+            var continueSync = false
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    ensurePythonStarted()
+                    val module = Python.getInstance().getModule("notes_git")
+                    val value = if (choices == null) module.callAttr("sync",
+                        rootDirectory!!.absolutePath, account.token, account.username, push)
+                    else module.callAttr("resolve", rootDirectory!!.absolutePath,
+                        account.token, account.username, choices.toString())
+                    JSONObject(value.toString())
                 }
-                OutputDirectoryManager.getEditorFolder(this@NotesActivity)
+                check(result.optBoolean("ok")) { result.optString("message") }
                 browseFiles(currentDirectory)
+                val conflicts = result.optJSONArray("conflicts")
+                if (conflicts != null && conflicts.length() > 0) {
+                    resolveNotesConflicts((0 until conflicts.length()).map { conflicts.getString(it) }, push)
+                } else if (choices != null) {
+                    continueSync = true
+                } else Toast.makeText(this@NotesActivity, result.optString("message"), Toast.LENGTH_LONG).show()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Toast.makeText(this@NotesActivity, error.message ?: "Notes sync failed", Toast.LENGTH_LONG).show()
+            } finally {
+                notesSyncRunning = false
+                progress.dismiss()
             }
-        } else if (explorerType == TYPE_EDITOR) {
-            OutputDirectoryManager.getEditorFolder(this)
-            browseFiles(currentDirectory)
-        } else {
-            browseFiles(currentDirectory)
+            if (continueSync) syncNotes(push)
         }
     }
 
-    private fun pushNotes() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val courseName = repo.prefs.getCourseNameSnapshot() ?: return@launch
-            val firstName = repo.prefs.getFirstNameSnapshot() ?: "User"
-            val rootPath = OutputDirectoryManager.getNotesFolder(this@NotesActivity).absolutePath
-
-            ensurePythonStarted()
-            val py = Python.getInstance()
-            val module = py.getModule("bridge")
-
-            withContext(Dispatchers.Main) {
-                Toast.makeText(this@NotesActivity, "Pushing changes...", Toast.LENGTH_SHORT).show()
-            }
-
-            try {
-                val result = module.callAttr("push_repo", rootPath, courseName, githubToken, firstName).toString()
-                withContext(Dispatchers.Main) {
-                    Log.d("GitPush", result)
-                    Toast.makeText(this@NotesActivity, result, Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Log.e("GitPush", "Push failed", e)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@NotesActivity, "Push failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
+    private fun resolveNotesConflicts(paths: List<String>, push: Boolean) {
+        val choices = JSONObject()
+        fun choose(index: Int) {
+            if (index == paths.size) { syncNotes(push, choices); return }
+            AlertDialog.Builder(this)
+                .setTitle("Notes conflict ${index + 1}/${paths.size}")
+                .setMessage(paths[index] + "\nChoose which version to keep. Both versions remain in Git history.")
+                .setPositiveButton("Keep mine") { _, _ -> choices.put(paths[index], "mine"); choose(index + 1) }
+                .setNegativeButton("Use incoming") { _, _ -> choices.put(paths[index], "class"); choose(index + 1) }
+                .setNeutralButton("Keep both") { _, _ -> choices.put(paths[index], "both"); choose(index + 1) }
+                .setCancelable(true).show()
         }
-    }
-    private fun pullNotes() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val courseName = repo.prefs.getCourseNameSnapshot() ?: "My_Course"
-            val firstName = repo.prefs.getFirstNameSnapshot() ?: "User"
-            val rootPath = OutputDirectoryManager.getNotesFolder(this@NotesActivity).absolutePath
-
-            ensurePythonStarted()
-            val py = Python.getInstance()
-            val module = py.getModule("bridge")
-            
-            withContext(Dispatchers.Main) {
-                Toast.makeText(this@NotesActivity, "Pulling latest...", Toast.LENGTH_SHORT).show()
-            }
-
-            try {
-                val result = module.callAttr("pull_repo", rootPath, courseName, githubToken, firstName).toString()
-                withContext(Dispatchers.Main) {
-                    Log.d("GitPull", result)
-                    Toast.makeText(this@NotesActivity, result, Toast.LENGTH_SHORT).show()
-                    if (result.contains("Successful")) {
-                        browseFiles(currentDirectory)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("GitPull", "Pull failed", e)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@NotesActivity, "Pull failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+        choose(0)
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -431,10 +394,11 @@ class NotesActivity : AppCompatActivity() {
                 return@launch
             }
 
-            val restored = GoogleAccountBackupManager.restoreAllGoogleAccountsIfAvailable(
+            val accountToken = GitHubAccountStore(this@NotesActivity).account()?.token
+            val restored = accountToken != null && GoogleAccountBackupManager.restoreAllGoogleAccountsIfAvailable(
                 context = this@NotesActivity,
                 prefs = repo.prefs,
-                githubToken = githubToken
+                githubToken = accountToken
             )
 
             if (restored && isAlreadyLoggedIn()) {
@@ -890,32 +854,12 @@ class NotesActivity : AppCompatActivity() {
     }
 
     private fun updateGitButtonsVisibility() {
-        if (isEditMode || selectedFile != null || explorerType != TYPE_NOTES) {
-            binding.btnPush.isVisible = false
-            binding.btnPull.isVisible = false
-            binding.btnBackupAccounts.isVisible = false
-            return
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            val courseName = repo.prefs.getCourseNameSnapshot()
-            val current = currentDirectory
-
-            val visible = if (courseName != null && current != null) {
-                val notesRoot = OutputDirectoryManager.getNotesFolder(this@NotesActivity)
-                val courseDir = File(notesRoot, sanitizeRepoName(courseName))
-                current.canonicalPath == courseDir.canonicalPath ||
-                        current.canonicalPath.startsWith(courseDir.canonicalPath + File.separator)
-            } else {
-                false
-            }
-
-            withContext(Dispatchers.Main) {
-                binding.btnPush.isVisible = visible
-                binding.btnPull.isVisible = visible
-                binding.btnBackupAccounts.isVisible = visible
-            }
-        }
+        val visible = !isEditMode && selectedFile == null && explorerType == TYPE_NOTES
+        binding.btnPush.isVisible = visible
+        binding.btnPull.isVisible = visible
+        binding.btnBackupAccounts.isVisible = visible
+        binding.btnPush.contentDescription = "Push my private notes"
+        binding.btnPull.contentDescription = "Get class and personal notes updates"
     }
 
     private fun toggleEditMode(enabled: Boolean) {
@@ -1110,32 +1054,6 @@ class NotesActivity : AppCompatActivity() {
         }
     }
 
-    private fun resolveAgentRootDirectory(): File {
-        val baseRoot = OutputDirectoryManager.getRootFolder(this)
-        val requestedSubdir = intent.getStringExtra(EXTRA_AGENT_ROOT_SUBDIR)
-            ?.trim()
-            ?.trim('/')
-            ?.takeIf { it.isNotBlank() }
-            ?: return baseRoot
-
-        val target = File(baseRoot, requestedSubdir)
-        val canonicalBase = baseRoot.canonicalFile
-        val canonicalTarget = try {
-            target.canonicalFile
-        } catch (_: Exception) {
-            return canonicalBase
-        }
-        if (canonicalTarget != canonicalBase &&
-            !canonicalTarget.path.startsWith(canonicalBase.path + File.separator)
-        ) {
-            return canonicalBase
-        }
-        if (!target.exists()) {
-            target.mkdirs()
-        }
-        return canonicalTarget
-    }
-
     private fun setupUI() {
         setSupportActionBar(binding.toolbar)
         binding.toolbar.setNavigationOnClickListener {
@@ -1182,36 +1100,6 @@ class NotesActivity : AppCompatActivity() {
             showPythonRunDialog(file)
         }
 
-        binding.btnCropImage.setOnClickListener {
-            currentImageFile?.let { startImageCrop(it) } ?: Toast.makeText(this, "Open an image first.", Toast.LENGTH_SHORT).show()
-        }
-
-        binding.btnCropDetails.setOnClickListener {
-            val metadata = currentCropMetadata
-            if (metadata == null) {
-                Toast.makeText(this, "Crop an image first.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            showCropDetailsDialog(metadata)
-        }
-
-        binding.btnApplyReplacement.setOnClickListener {
-            val metadata = currentCropMetadata
-            if (metadata == null) {
-                Toast.makeText(this, "Open a cropped image first.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            replacementImagePickerLauncher.launch(arrayOf("image/*"))
-        }
-
-        binding.btnImportImage.setOnClickListener {
-            if (explorerType != TYPE_EDITOR) {
-                Toast.makeText(this, "Image import is available in Editor only.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            importImageLauncher.launch(arrayOf("image/*"))
-        }
-
         binding.btnPasteFile.setOnClickListener {
             if (pendingUris.isNotEmpty()) savePendingFiles() else if (cutFiles != null) pasteFiles()
         }
@@ -1231,11 +1119,14 @@ class NotesActivity : AppCompatActivity() {
         binding.btnPull.setOnClickListener { pullNotes() }
         binding.btnBackupAccounts.setOnClickListener { showBackupAccountsDialog() }
         updatePythonRunVisibility()
-        updateImageEditorActions()
         updateEditorActions()
     }
 
     private fun showBackupAccountsDialog() {
+        if (GitHubAccountStore(this).account() == null) {
+            startActivity(Intent(this, NotesLibraryActivity::class.java))
+            return
+        }
         if (!File(getExternalFilesDir(null), "storage_state.json").exists()) {
             Toast.makeText(this, "Log into Google first, then back up all accounts", Toast.LENGTH_LONG).show()
             openNotebookLM()
@@ -1604,7 +1495,6 @@ class NotesActivity : AppCompatActivity() {
 
         if (successCount > 0) {
             val folderName = when(explorerType) {
-                TYPE_AGENT -> "Agent"
                 TYPE_UPDATE -> "Updates"
                 else -> "Notes"
             }
@@ -1656,10 +1546,8 @@ class NotesActivity : AppCompatActivity() {
         if (!isEditMode) {
                 binding.toolbar.title = if (target == rootDirectory) {
                     when(explorerType) {
-                        TYPE_AGENT -> "Files"
                         TYPE_UPDATE -> "Updates"
-                        TYPE_EDITOR -> "Editor"
-                        else -> "Notes"
+                        else -> intent.getStringExtra(EXTRA_NOTES_SUBJECT) ?: "Notes"
                     }
                 } else target.name
             updateGitButtonsVisibility()
@@ -1683,19 +1571,12 @@ class NotesActivity : AppCompatActivity() {
                     binding.ivFilePreview.isVisible = false
                     binding.btnShareFile.isVisible = false
                     binding.btnSaveFile.isVisible = false
-                    binding.btnCropImage.isVisible = false
-                    binding.btnCropDetails.isVisible = false
-                    binding.btnApplyReplacement.isVisible = false
-                    binding.btnImportImage.isVisible = false
                     selectedFile = null
                     textEditorFile = null
-                    currentImageFile = null
-                    currentCropMetadata = null
                     editorDirty = false
                 }
                 binding.btnPasteFile.isVisible = (pendingUris.isNotEmpty() || cutFiles != null) && !isEditMode
                 updatePythonRunVisibility()
-                updateImageEditorActions()
                 if (!initialTargetOpened && target == rootDirectory) {
                     openInitialTargetIfRequested()
                 }
@@ -1737,21 +1618,6 @@ class NotesActivity : AppCompatActivity() {
 
     private fun updatePythonRunVisibility() {
         binding.btnRunPython.isVisible = !isEditMode && selectedFile?.extension?.lowercase() == "py"
-    }
-
-    private fun updateImageEditorActions() {
-        val file = currentImageFile
-        val isImage = file != null && isImageFile(file)
-        val cropMetadata = file?.let { loadCropMetadataForFile(it) }
-        if (cropMetadata != null) {
-            currentCropMetadata = cropMetadata
-        }
-        val effectiveCropMetadata = cropMetadata ?: currentCropMetadata
-
-        binding.btnCropImage.isVisible = !isEditMode && isImage
-        binding.btnCropDetails.isVisible = !isEditMode && effectiveCropMetadata != null
-        binding.btnApplyReplacement.isVisible = !isEditMode && effectiveCropMetadata != null
-        binding.btnImportImage.isVisible = !isEditMode && explorerType == TYPE_EDITOR
     }
 
     private fun setupEditor() {
@@ -2234,8 +2100,6 @@ class NotesActivity : AppCompatActivity() {
             }
 
             selectedFile = file
-            currentImageFile = null
-            currentCropMetadata = null
             binding.rvFiles.isVisible = false
             binding.scrollFileContent.isVisible = false
             binding.codeEditor.isVisible = false
@@ -2259,10 +2123,8 @@ class NotesActivity : AppCompatActivity() {
                 }
                 fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") ||
                 fileName.endsWith(".png") || fileName.endsWith(".webp") -> {
-                    currentImageFile = file
                     binding.ivFilePreview.isVisible = true
                     Glide.with(this).load(file).into(binding.ivFilePreview)
-                    updateImageEditorActions()
                 }
                 fileName.endsWith(".docx") -> {
                     showTextPreview("Loading DOCX...")
@@ -2307,9 +2169,6 @@ class NotesActivity : AppCompatActivity() {
                     openTextEditor(file)
                 }
             }
-            if (!isImageFile(file)) {
-                updateImageEditorActions()
-            }
         }
     }
 
@@ -2318,11 +2177,8 @@ class NotesActivity : AppCompatActivity() {
         binding.codeEditor.isVisible = false
         binding.tvFileContent.text = text
         textEditorFile = null
-        currentImageFile = null
-        currentCropMetadata = null
         editorDirty = false
         updateEditorActions()
-        updateImageEditorActions()
     }
 
     private fun openTextEditor(file: File) {
@@ -2338,12 +2194,9 @@ class NotesActivity : AppCompatActivity() {
         binding.scrollFileContent.isVisible = false
         binding.codeEditor.setText(text)
         textEditorFile = file
-        currentImageFile = null
-        currentCropMetadata = null
         editorDirty = false
         isEditorContentLoading = false
         updateEditorActions()
-        updateImageEditorActions()
     }
 
     private fun saveEditedFile(): Boolean {
@@ -2357,332 +2210,6 @@ class NotesActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "Save failed: ${e.message}", Toast.LENGTH_LONG).show()
             false
-        }
-    }
-
-    private fun startImageCrop(sourceFile: File) {
-        try {
-            val outputFile = buildEditorOutputFile(
-                prefix = "crop",
-                sourceName = sourceFile.nameWithoutExtension,
-                extension = "png"
-            )
-            cropOutputFile = outputFile
-
-            val intent = Intent(this, EditorCropActivity::class.java).apply {
-                putExtra(EditorCropActivity.EXTRA_SOURCE_PATH, sourceFile.absolutePath)
-                putExtra(EditorCropActivity.EXTRA_OUTPUT_PATH, outputFile.absolutePath)
-            }
-            cropResultLauncher.launch(intent)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Crop failed: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun handleCropResult(resultCode: Int, data: Intent?) {
-        val outputFile = cropOutputFile
-        cropOutputFile = null
-
-        if (resultCode != RESULT_OK || data == null) {
-            return
-        }
-
-        val resultFile = File(requireNotNull(outputFile) { "Missing crop output file" }.absolutePath)
-        val sourceWidth = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_SOURCE_WIDTH, 0)
-        val sourceHeight = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_SOURCE_HEIGHT, 0)
-        val metadata = EditorCropMetadata(
-            sourcePath = currentImageFile?.absolutePath.orEmpty(),
-            sourceName = currentImageFile?.name.orEmpty(),
-            cropPath = resultFile.absolutePath,
-            cropName = resultFile.name,
-            offsetX = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_LEFT, 0),
-            offsetY = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_TOP, 0),
-            width = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_WIDTH, 0),
-            height = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_HEIGHT, 0),
-            imageWidth = sourceWidth,
-            imageHeight = sourceHeight,
-            aspectRatioX = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_WIDTH, 0),
-            aspectRatioY = data.getIntExtra(EditorCropActivity.EXTRA_RESULT_HEIGHT, 0)
-        )
-
-        saveCropMetadata(metadata)
-        createPromptForCrop(metadata)
-
-        Toast.makeText(this, "Cropped image saved in Editor", Toast.LENGTH_SHORT).show()
-        currentImageFile = resultFile
-        currentCropMetadata = metadata
-        binding.ivFilePreview.isVisible = true
-        Glide.with(this).load(resultFile).into(binding.ivFilePreview)
-        browseFiles(OutputDirectoryManager.getEditorFolder(this), preservePreviewState = true)
-        binding.btnCropImage.isVisible = false
-        binding.btnCropDetails.isVisible = true
-        binding.btnApplyReplacement.isVisible = true
-        showCropDetailsDialog(metadata)
-    }
-
-    private fun handleReplacementImagePicked(uri: Uri?) {
-        val metadata = currentCropMetadata
-        if (uri == null || metadata == null) {
-            return
-        }
-
-        applyReplacementFromUri(uri, metadata, keepImportedCopy = false)
-    }
-
-    private fun applyReplacementFromUri(
-        uri: Uri,
-        metadata: EditorCropMetadata,
-        keepImportedCopy: Boolean
-    ) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            runCatching {
-                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            try {
-                val replacementName = getFileName(uri) ?: "replacement"
-                val sourceBitmap = BitmapFactory.decodeFile(metadata.sourcePath)
-                    ?: throw IllegalStateException("Original image not found")
-                val replacementBitmap = contentResolver.openInputStream(uri)?.use { input ->
-                    BitmapFactory.decodeStream(input)
-                } ?: throw IllegalStateException("Could not read replacement image")
-
-                if (keepImportedCopy) {
-                    saveImportedReplacementCopy(uri, replacementName)
-                }
-
-                val resultBitmap = sourceBitmap.copy(Bitmap.Config.ARGB_8888, true)
-                val canvas = Canvas(resultBitmap)
-                val target = RectF(
-                    metadata.offsetX.toFloat(),
-                    metadata.offsetY.toFloat(),
-                    (metadata.offsetX + metadata.width).toFloat(),
-                    (metadata.offsetY + metadata.height).toFloat()
-                )
-                canvas.drawBitmap(replacementBitmap, null, target, null)
-
-                val outputFile = buildEditorOutputFile(
-                    prefix = "replacement",
-                    sourceName = metadata.sourceName.ifBlank { "image" },
-                    extension = "png"
-                )
-                FileOutputStream(outputFile).use { out ->
-                    resultBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                }
-                val updatedMetadata = metadata.copy(
-                    sourcePath = outputFile.absolutePath,
-                    sourceName = outputFile.name,
-                    cropPath = outputFile.absolutePath,
-                    cropName = outputFile.name
-                )
-                saveCropMetadata(updatedMetadata)
-                createPromptForCrop(updatedMetadata)
-
-                withContext(Dispatchers.Main) {
-                    currentCropMetadata = updatedMetadata
-                    currentImageFile = outputFile
-                    binding.ivFilePreview.isVisible = true
-                    Glide.with(this@NotesActivity).load(outputFile).into(binding.ivFilePreview)
-                    Toast.makeText(this@NotesActivity, "Imported image applied to crop area", Toast.LENGTH_SHORT).show()
-                    browseFiles(OutputDirectoryManager.getEditorFolder(this@NotesActivity), preservePreviewState = true)
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@NotesActivity, "Replacement failed: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun saveImportedReplacementCopy(uri: Uri, sourceName: String): File {
-        val extension = sourceName.substringAfterLast('.', "png").ifBlank { "png" }
-        val outputFile = buildEditorOutputFile(
-            prefix = "replacement_input",
-            sourceName = sourceName.substringBeforeLast('.', sourceName),
-            extension = extension
-        )
-        contentResolver.openInputStream(uri)?.use { input ->
-            FileOutputStream(outputFile).use { output -> input.copyTo(output) }
-        } ?: throw IllegalStateException("Could not save imported replacement")
-        return outputFile
-    }
-
-    private fun handleImportedImage(uri: Uri?) {
-        if (uri == null) return
-
-        val metadata = currentCropMetadata
-        if (metadata != null) {
-            applyReplacementFromUri(uri, metadata, keepImportedCopy = true)
-            return
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            runCatching {
-                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-
-            try {
-                val editorRoot = OutputDirectoryManager.getEditorFolder(this@NotesActivity)
-                val sourceName = getFileName(uri) ?: "image"
-                val extension = sourceName.substringAfterLast('.', "png").ifBlank { "png" }
-                val outputFile = buildEditorOutputFile(
-                    prefix = "import",
-                    sourceName = sourceName.substringBeforeLast('.', sourceName),
-                    extension = extension
-                )
-
-                contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(outputFile).use { output -> input.copyTo(output) }
-                } ?: throw IllegalStateException("Could not read image")
-
-                withContext(Dispatchers.Main) {
-                    currentCropMetadata = null
-                    currentImageFile = outputFile
-                    binding.ivFilePreview.isVisible = true
-                    Glide.with(this@NotesActivity).load(outputFile).into(binding.ivFilePreview)
-                    Toast.makeText(this@NotesActivity, "Image imported to Editor", Toast.LENGTH_SHORT).show()
-                    browseFiles(editorRoot, preservePreviewState = true)
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@NotesActivity, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun showCropDetailsDialog(metadata: EditorCropMetadata) {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 20, 40, 8)
-        }
-
-        fun buildField(label: String, value: Int): EditText {
-            container.addView(TextView(this).apply {
-                text = label
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                setPadding(0, 14, 0, 8)
-            })
-            return EditText(this).apply {
-                setText(value.toString())
-                inputType = InputType.TYPE_CLASS_NUMBER
-                setTextColor(Color.WHITE)
-                setHintTextColor(Color.parseColor("#80FFFFFF"))
-                setBackgroundResource(R.drawable.bg_edit_text)
-                setPadding(24, 18, 24, 18)
-            }.also { container.addView(it) }
-        }
-
-        val leftInput = buildField("Padding X / Left", metadata.offsetX)
-        val topInput = buildField("Padding Y / Top", metadata.offsetY)
-        val widthInput = buildField("Crop Width", metadata.width)
-        val heightInput = buildField("Crop Height", metadata.height)
-
-        AlertDialog.Builder(this)
-            .setTitle("Crop Dimensions")
-            .setMessage("Adjust the crop box values that will be saved for replacement and reused later.")
-            .setView(ScrollView(this).apply { addView(container) })
-            .setPositiveButton("Save") { _, _ ->
-                val maxWidth = metadata.imageWidth.takeIf { it > 0 } ?: metadata.width
-                val maxHeight = metadata.imageHeight.takeIf { it > 0 } ?: metadata.height
-                val left = leftInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: metadata.offsetX
-                val top = topInput.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: metadata.offsetY
-                val width = widthInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: metadata.width
-                val height = heightInput.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: metadata.height
-                val safeLeft = left.coerceIn(0, (maxWidth - 1).coerceAtLeast(0))
-                val safeTop = top.coerceIn(0, (maxHeight - 1).coerceAtLeast(0))
-                val safeWidth = width.coerceIn(1, (maxWidth - safeLeft).coerceAtLeast(1))
-                val safeHeight = height.coerceIn(1, (maxHeight - safeTop).coerceAtLeast(1))
-                val updated = metadata.copy(
-                    offsetX = safeLeft,
-                    offsetY = safeTop,
-                    width = safeWidth,
-                    height = safeHeight
-                )
-                currentCropMetadata = updated
-                saveCropMetadata(updated)
-                createPromptForCrop(updated)
-                Toast.makeText(this, "Crop dimensions saved", Toast.LENGTH_SHORT).show()
-                updateImageEditorActions()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun saveCropMetadata(metadata: EditorCropMetadata) {
-        val cropFile = File(metadata.cropPath)
-        val metaFile = File(cropFile.parentFile, "${cropFile.nameWithoutExtension}.crop.json")
-        val payload = JSONObject().apply {
-            put("sourcePath", metadata.sourcePath)
-            put("sourceName", metadata.sourceName)
-            put("cropPath", metadata.cropPath)
-            put("cropName", metadata.cropName)
-            put("offsetX", metadata.offsetX)
-            put("offsetY", metadata.offsetY)
-            put("width", metadata.width)
-            put("height", metadata.height)
-            put("imageWidth", metadata.imageWidth)
-            put("imageHeight", metadata.imageHeight)
-            put("aspectRatioX", metadata.aspectRatioX)
-            put("aspectRatioY", metadata.aspectRatioY)
-        }
-        metaFile.writeText(payload.toString(2))
-    }
-
-    private fun createPromptForCrop(metadata: EditorCropMetadata) {
-        val cropFile = File(metadata.cropPath)
-        val promptFile = File(cropFile.parentFile, "${cropFile.nameWithoutExtension}_prompt.txt")
-        promptFile.writeText(
-            buildString {
-                appendLine("Generate a replacement for the cropped region.")
-                appendLine("Keep the same aspect ratio and visual scale.")
-                appendLine("Source image: ${metadata.sourceName}")
-                appendLine("Crop rectangle: ${metadata.offsetX}, ${metadata.offsetY}, ${metadata.width}, ${metadata.height}")
-                appendLine("Replacement image size: ${metadata.width} x ${metadata.height}")
-                appendLine("Original image size: ${metadata.imageWidth} x ${metadata.imageHeight}")
-                appendLine()
-                appendLine("Prompt template:")
-                appendLine("Replace only the cropped area and keep the surrounding context unchanged.")
-            }
-        )
-    }
-
-    private fun buildEditorOutputFile(prefix: String, sourceName: String, extension: String): File {
-        val editorRoot = OutputDirectoryManager.getEditorFolder(this)
-        val sanitized = sourceName.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(40).trim('_')
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        return File(editorRoot, "${prefix}_${sanitized}_$timestamp.$extension")
-    }
-
-    private fun loadCropMetadataForFile(file: File): EditorCropMetadata? {
-        val metaFile = File(file.parentFile ?: return null, "${file.nameWithoutExtension}.crop.json")
-        if (!metaFile.exists()) return null
-        return try {
-            val json = JSONObject(metaFile.readText())
-            EditorCropMetadata(
-                sourcePath = json.optString("sourcePath"),
-                sourceName = json.optString("sourceName"),
-                cropPath = json.optString("cropPath"),
-                cropName = json.optString("cropName"),
-                offsetX = json.optInt("offsetX"),
-                offsetY = json.optInt("offsetY"),
-                width = json.optInt("width"),
-                height = json.optInt("height"),
-                imageWidth = json.optInt("imageWidth"),
-                imageHeight = json.optInt("imageHeight"),
-                aspectRatioX = json.optInt("aspectRatioX"),
-                aspectRatioY = json.optInt("aspectRatioY")
-            )
-        } catch (e: Exception) {
-            Log.e("Editor", "Failed to parse crop metadata", e)
-            null
-        }
-    }
-
-    private fun isImageFile(file: File): Boolean {
-        return when (file.extension.lowercase(Locale.ROOT)) {
-            "jpg", "jpeg", "png", "webp", "bmp" -> true
-            else -> false
         }
     }
 
@@ -2756,6 +2283,11 @@ class NotesActivity : AppCompatActivity() {
     }
 
     private fun installApk(file: File) {
+        if (explorerType == TYPE_UPDATE) {
+            startActivity(Intent(this, UpdateInstallActivity::class.java)
+                .putExtra(UpdateInstallActivity.EXTRA_APK_PATH, file.absolutePath))
+            return
+        }
         try {
             val uri = FileProvider.getUriForFile(this, "${packageName}.provider", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -2770,11 +2302,8 @@ class NotesActivity : AppCompatActivity() {
     private fun closeFile() {
         selectedFile = null
         textEditorFile = null
-        currentImageFile = null
-        currentCropMetadata = null
         editorDirty = false
         updateEditorActions()
-        updateImageEditorActions()
         browseFiles(currentDirectory)
     }
 

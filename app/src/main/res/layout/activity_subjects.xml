@@ -1,119 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.drawerlayout.widget.DrawerLayout
+<androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/drawer_layout"
+    android:id="@+id/main_content"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_medkit_screen"
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <androidx.coordinatorlayout.widget.CoordinatorLayout
-        android:id="@+id/main_content"
+    <!-- Activity Background: bg_detail (same as attendance detail) -->
+    <ImageView
+        android:id="@+id/ivBackground"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipChildren="false"
-        android:clipToPadding="false">
+        android:scaleType="fitXY"
+        android:src="@drawable/bg_medkit_screen"
+        tools:ignore="ContentDescription" />
 
-        <!-- Activity Background: bg_detail (same as attendance detail) -->
-        <ImageView
-            android:id="@+id/ivBackground"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="fitXY"
-            android:src="@drawable/bg_medkit_screen"
-            tools:ignore="ContentDescription" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical">
-
-            <androidx.viewpager2.widget.ViewPager2
-                android:id="@+id/home_pager"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="48dp"
-                android:layout_weight="1"
-                android:clipChildren="true"
-                android:clipToPadding="false" />
-
-        </LinearLayout>
-
-        <!-- Container for Overlay WebViews -->
-        <FrameLayout
-            android:id="@+id/webViewContainer"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="76dp"
-            android:layout_marginStart="16dp"
-            android:layout_marginTop="8dp"
-            android:layout_marginEnd="16dp"
-            android:background="@drawable/bg_medkit_card"
-            android:elevation="12dp"
-            android:minHeight="0dp"
-            android:paddingStart="16dp"
-            android:paddingTop="0dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="4dp"
-            app:titleTextAppearance="@style/TextAppearance.MITAttendance.ToolbarTitle"
-            app:titleTextColor="@color/medkit_ink">
-
-            <ProgressBar
-                android:id="@+id/toolbar_progress_bar"
-                style="?android:attr/progressBarStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginEnd="16dp"
-                android:indeterminateTint="@color/medkit_line"
-                android:visibility="gone" />
-
-        </androidx.appcompat.widget.Toolbar>
-
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/home_tabs"
-            android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginStart="16dp"
-            android:layout_marginTop="94dp"
-            android:layout_marginEnd="16dp"
-            android:background="@android:color/transparent"
-            android:elevation="0dp"
-            android:outlineProvider="none"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp"
-            android:stateListAnimator="@null"
-            app:tabBackground="@drawable/bg_medkit_tab"
-            app:tabGravity="fill"
-            app:tabIndicatorHeight="0dp"
-            app:tabInlineLabel="true"
-            app:tabMode="fixed"
-            app:tabRippleColor="@android:color/transparent"
-            app:tabSelectedTextColor="@color/medkit_ink"
-            app:tabTextAppearance="@style/TextAppearance.Material3.TitleSmall"
-            app:tabTextColor="@color/medkit_tab_text" />
-
-    </androidx.coordinatorlayout.widget.CoordinatorLayout>
-
-    <!-- Navigation Drawer -->
-    <com.google.android.material.navigation.NavigationView
-        android:id="@+id/nav_view"
-        android:layout_width="280dp"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="start"
-        android:background="@color/medkit_cream"
-        app:menu="@menu/menu_subjects"
-        app:headerLayout="@layout/nav_header"
-        app:itemBackground="@drawable/bg_nav_item_selector"
-        app:itemIconPadding="16dp"
-        app:itemIconTint="@color/menu_text_adaptive"
-        app:itemTextColor="@color/menu_text_adaptive" />
+        android:orientation="vertical">
 
-</androidx.drawerlayout.widget.DrawerLayout>
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/home_pager"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="48dp"
+            android:layout_weight="1"
+            android:clipChildren="true"
+            android:clipToPadding="false" />
+
+    </LinearLayout>
+
+    <!-- Container for Overlay WebViews -->
+    <FrameLayout
+        android:id="@+id/webViewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="76dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_medkit_card"
+        android:elevation="12dp"
+        android:minHeight="0dp"
+        android:paddingStart="16dp"
+        android:paddingTop="0dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="4dp"
+        app:titleTextAppearance="@style/TextAppearance.MITAttendance.ToolbarTitle"
+        app:titleTextColor="@color/medkit_ink">
+
+        <ProgressBar
+            android:id="@+id/toolbar_progress_bar"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|center_vertical"
+            android:layout_marginEnd="16dp"
+            android:indeterminateTint="@color/medkit_line"
+            android:visibility="gone" />
+
+    </androidx.appcompat.widget.Toolbar>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

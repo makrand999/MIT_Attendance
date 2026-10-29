@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
 data class GithubRelease(
     @SerialName("tag_name")
     val tagName: String,          // e.g. "v2"
-    val name: String,              // Release title
-    val body: String,              // Release notes
+    val name: String = "",              // Release title
+    val body: String = "",              // Release notes
     val assets: List<GithubAsset>
 )
 
@@ -16,5 +16,7 @@ data class GithubRelease(
 data class GithubAsset(
     @SerialName("browser_download_url")
     val browserDownloadUrl: String,
-    val name: String
+    val name: String,
+    val size: Long = 0,
+    val digest: String? = null
 )

@@ -171,6 +171,9 @@ class LoginActivity : AppCompatActivity() {
                     AttendanceSyncWorker.schedule(applicationContext)
                     AttendanceSyncWorker.runNow(applicationContext)
                     startActivity(Intent(this, SubjectsActivity::class.java))
+                    intent.getStringExtra("campus_target")?.let { target ->
+                        startActivity(Intent(this, com.mit.attendance.campus.CampusLinkActivity::class.java).setData(android.net.Uri.parse(target)))
+                    }
                     finish()
                 }
                 is LoginUiState.ServerDown -> {

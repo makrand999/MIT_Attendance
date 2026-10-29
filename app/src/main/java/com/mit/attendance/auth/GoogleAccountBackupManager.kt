@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets
 
 object GoogleAccountBackupManager {
     private const val TAG = "GoogleAccountBackup"
-    private const val BACKUP_REPO_NAME = "backup"
+    private const val BACKUP_REPO_NAME = "mit-attendance-backup"
     private const val BACKUP_FOLDER_NAME = "google"
     private const val BACKUP_FILE_NAME = "all_accounts_session.dat"
     private const val LOCAL_STORAGE_FILE_NAME = "storage_state.json"
@@ -78,11 +78,12 @@ object GoogleAccountBackupManager {
         val module = Python.getInstance().getModule("bridge")
         val result = module.callAttr(
             "pull_repo",
-            OutputDirectoryManager.getBackupsFolder(context).absolutePath,
+            accountBackupRoot(context).absolutePath,
             BACKUP_REPO_NAME,
             githubToken,
             prefs.getFirstNameSnapshot() ?: "User"
         ).toString()
+        check(result.startsWith("Pull Successful")) { result }
         Log.d(TAG, "Pull result: $result")
     }
 
@@ -91,7 +92,7 @@ object GoogleAccountBackupManager {
         val module = Python.getInstance().getModule("bridge")
         val result = module.callAttr(
             "push_repo",
-            OutputDirectoryManager.getBackupsFolder(context).absolutePath,
+            accountBackupRoot(context).absolutePath,
             BACKUP_REPO_NAME,
             githubToken,
             prefs.getFirstNameSnapshot() ?: "User"
@@ -104,8 +105,13 @@ object GoogleAccountBackupManager {
     }
 
     private fun getSharedBackupFile(context: Context): File {
-        val repoDir = File(OutputDirectoryManager.getBackupsFolder(context), BACKUP_REPO_NAME)
+        val repoDir = File(accountBackupRoot(context), BACKUP_REPO_NAME)
         return File(File(repoDir, BACKUP_FOLDER_NAME), BACKUP_FILE_NAME)
+    }
+
+    private fun accountBackupRoot(context: Context): File {
+        val username = GitHubAccountStore(context).requireAccount().username.lowercase(java.util.Locale.ROOT)
+        return File(OutputDirectoryManager.getBackupsFolder(context), username).apply { mkdirs() }
     }
 
     private fun getLocalStorageFile(context: Context): File {
