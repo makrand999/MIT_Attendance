@@ -2,7 +2,6 @@ package com.mit.attendance.campus
 
 import android.app.Application
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.widget.*
@@ -138,6 +137,10 @@ class CampusOpportunitiesActivity:AppCompatActivity(){
     private val categories=listOf("INTERNSHIP","PART_TIME","RESEARCH_ASSISTANT","PROJECT_COLLAB","CAMPUS_GIG","TUTORING")
     private val locations=listOf("ON_CAMPUS","REMOTE","HYBRID")
     private val model:OpportunitiesViewModel by viewModels()
+    private var renderedState:OpportunitiesState?=null
+    private var listSection="jobs"
+    private lateinit var toolbar:androidx.appcompat.widget.Toolbar
+    private val navigation=mutableMapOf<String,com.google.android.material.button.MaterialButton>()
     private lateinit var root:LinearLayout
     private lateinit var body:LinearLayout
     private lateinit var status:TextView
@@ -146,15 +149,30 @@ class CampusOpportunitiesActivity:AppCompatActivity(){
     private var socketGeneration:String?=null
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState)
-        supportActionBar?.apply{title="Akatsuki";setDisplayHomeAsUpEnabled(true)}
-        root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(24,12,24,12)}
-        status=TextView(this);root.addView(status)
-        val nav=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL};root.addView(HorizontalScrollView(this).apply{addView(nav)})
-        for((name,section)in listOf("Explore" to "jobs","My applications" to "applications","My listings" to "mine","Inbox" to "conversations"))button(nav,name){model.open(section)}
-        button(root,"Refresh"){model.load()};button(root,"Filters"){filters()};button(root,"Post opportunity"){model.open("editor");model.draft(jsonObject());showJobEditor()}
-        button(root,"Open browser workspace"){startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(CampusHttp.WEB_WORKSPACE)))}
+        listSection=savedInstanceState?.getString("list_section")?:"jobs"
+        root=CampusUi.column(this)
+        status=CampusUi.text(this, "");root.addView(status)
+        val nav=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        root.addView(HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false;addView(nav)})
+        for((name,section)in listOf("Explore" to "jobs","Applications" to "applications","Listings" to "mine","Inbox" to "conversations"))navigation[section]=CampusUi.button(this,nav,name){model.open(section)}
         body=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL};root.addView(body)
-        setContentView(ScrollView(this).apply{addView(root)})
+        toolbar=CampusUi.screen(this,"Akatsuki",root,listOf(
+            "Refresh" to { model.load() },
+            "Filters" to { filters() },
+            "Post opportunity" to { model.open("editor");model.draft(jsonObject());showJobEditor() }
+        ))
+        onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true){
+            override fun handleOnBackPressed(){
+                val state=model.state.value
+                when(state.section){
+                    "job","editor"->model.open(listSection)
+                    "application"->if(state.jobId.isBlank())model.open("applications") else model.open("applicants",state.jobId)
+                    "applicants"->model.open("job",state.id)
+                    "messages"->model.open("conversations",job=state.jobId)
+                    else->finish()
+                }
+            }
+        })
         lifecycleScope.launch{repeatOnLifecycle(Lifecycle.State.STARTED){
             launch{model.state.collect{render(it)}}
             try{awaitCancellation()}finally{socket?.cancel();socketGeneration=null}
@@ -162,132 +180,156 @@ class CampusOpportunitiesActivity:AppCompatActivity(){
         if(savedInstanceState==null||model.state.value.session==null)model.open(intent.getStringExtra("section")?:"jobs",intent.getStringExtra("id")?:"",intent.getStringExtra("job")?:"")
     }
     override fun onStart(){super.onStart();val expected=model.state.value.session;if(expected!=null&&CampusSessionStore(this).read()?.generation!=expected.generation){model.clearForAccountChange();finish()}}
-    private fun button(parent:LinearLayout,text:String,action:()->Unit){parent.addView(Button(this).apply{this.text=text;setOnClickListener{action()}})}
-    private fun card(text:String):LinearLayout=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,20,0,20);addView(TextView(this@CampusOpportunitiesActivity).apply{this.text=text;textSize=16f});body.addView(this)}
+    private fun button(parent:LinearLayout,text:String,action:()->Unit){CampusUi.action(this,parent,text,action)}
+    private fun card(text:String):LinearLayout=CampusUi.card(this,body,text)
     private fun render(s:OpportunitiesState){
-        status.text=if(s.busy)"Loading…" else  s.error
-        body.removeAllViews()
-        val session=s.session?:return
+        CampusUi.status(status,if(s.busy)"Loading…" else s.error.takeUnless { error -> s.outgoing.any { it.error==error } }.orEmpty())
+        toolbar.menu.getItem(1).isVisible=s.section=="jobs"
+        toolbar.menu.getItem(2).isVisible=s.section in listOf("jobs","mine")
+        if(s.section in listOf("jobs","mine"))listSection=s.section
+        val selected=when(s.section){"job","editor","applicants"->listSection;"application"->"applications";"messages"->"conversations";else->s.section}
+        navigation.forEach { (section,button) ->
+            button.isSelected=section==selected
+            button.backgroundTintList=android.content.res.ColorStateList.valueOf(androidx.core.content.ContextCompat.getColor(this,if(section==selected)com.mit.attendance.R.color.medkit_butter else com.mit.attendance.R.color.white))
+        }
+        supportActionBar?.title=when(s.section){"applications"->"Applications";"mine"->"My listings";"conversations"->"Inbox";"messages"->"Conversation";"job"->"Opportunity";"application"->"Application";else->"Akatsuki"}
+        val session=s.session
+        if(session==null){body.removeAllViews();renderedState=null;return}
         val expected=intent.getStringExtra("account")
-        if(expected!=null&&expected!=session.profile.id){status.text="This link belongs to another campus account.";return}
+        if(expected!=null&&expected!=session.profile.id){body.removeAllViews();renderedState=null;CampusUi.status(status,"Switch accounts to open this link.");return}
         if(socketGeneration!=session.generation&&lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)){socket?.cancel();socketGeneration=session.generation;socket=lifecycleScope.launch{CampusSocket(CampusSessionStore(this@CampusOpportunitiesActivity),this@CampusOpportunitiesActivity).run(session){model.load()}}}
+        // Returning from the image viewer should keep expanded text and scroll position.
+        // Reconnect the socket above, but retain the views when the data did not change.
+        if(renderedState===s)return
+        renderedState=s
+        body.removeAllViews()
         if(s.section=="job"){
             val job=s.detail?:return
             val id=job.string("id")?:return
-            val card=card("${job.string("title")}\n${job.string("status")} · ${job.string("category")} · ${job.string("location_type")}\n${job.string("location")?:""}\n${job.string("stipend")?:""}\nDeadline: ${job.string("deadline")?:"—"}\n${job.string("description")?:""}")
-            images(card,session,job.string("description")?:"")
+            val card=card(listOfNotNull(job.string("title"),
+                listOf(job.string("category"),job.string("location_type"),job.string("status")).filterNotNull().joinToString(" · "){CampusUi.label(it)},
+                job.string("location"),job.string("stipend"),job.string("deadline")?.let{"Apply by ${CampusUi.date(it)}"},job.string("description")?.let{CampusImages.text(it)}).filter{it.isNotBlank()}.joinToString("\n"))
+            CampusImages.attach(this,card,session,job.string("description").orEmpty())
             if(job.string("creator_id")==session.profile.id){
                 button(card,"Edit listing"){if(model.state.value.draft?.string("id")!=id)model.draft(job.deepCopy());showJobEditor()}
                 button(card,if(job.string("status")=="OPEN")"Close listing" else "Reopen listing"){model.action{model.mutate("jobs/$id/status","PATCH",jsonObject("status" to if(job.string("status")=="OPEN")"CLOSED" else "OPEN"));model.load()}}
                 button(card,"Applicants"){model.open("applicants",id)}
-                button(card,"Job conversations"){model.open("conversations",job=id)}
+                button(card,"Chats"){model.open("conversations",job=id)}
             }else{
-                button(card,"Apply"){if(job.string("status")=="OPEN")apply(id)else Toast.makeText(this,"This opportunity is closed.",Toast.LENGTH_LONG).show()}
-                button(card,"Open job conversation"){model.action{val conv=model.mutate("conversations/job/$id").asJsonObject;model.open("messages",conv.string("id")!!,id)}}
+                if(job.string("status")=="OPEN")button(card,"Apply"){apply(id)}
+                button(card,"Message"){model.action{val conv=model.mutate("conversations/job/$id").asJsonObject;model.open("messages",conv.string("id")!!,id)}}
             }
         }else if(s.section=="application"){
             val application=s.detail?:return
             val id=application.string("id")?:return
-            val c=card("${application.string("job_title")}\n${application.string("applicant_name")} · ${application.string("status")}\n${application.string("pitch_note")?:""}")
+            val c=card("${application.string("job_title")}\n${application.string("applicant_name")} · ${CampusUi.label(application.string("status"))}\n${CampusImages.text(application.string("pitch_note").orEmpty())}")
+            CampusImages.attach(this,c,session,application.string("pitch_note").orEmpty())
             application.string("resume_url")?.let{url->button(c,"Open resume"){openLink(url)}}
-            button(c,"View opportunity"){model.open("job",application.string("job_id")!!)}
-            if(application.get("can_manage")?.asBoolean==true)button(c,"Change application status"){
+            button(c,"View"){model.open("job",application.string("job_id")!!)}
+            if(application.get("can_manage")?.asBoolean==true)button(c,"Change status"){
                 val choices=arrayOf("PENDING","SHORTLISTED","ACCEPTED","REJECTED")
-                AlertDialog.Builder(this).setItems(choices){_,position->model.action{
+                CampusUi.dialog(this).setItems(choices.map{CampusUi.label(it)}.toTypedArray()){_,position->model.action{
                     model.mutate("applications/$id/status","PATCH",jsonObject("status" to choices[position]));model.load()
                 }}.show()
             }
         }else if(s.section=="messages"){
-            card("Private conversation")
-            s.items.forEach{message->card("${message.string("sender_name")} · ${message.string("created_at")}\n${message.string("content")}")}
+            s.items.forEach{message->CampusUi.card(this,body).apply {
+                addView(CampusUi.text(this@CampusOpportunitiesActivity,listOfNotNull(message.string("sender_name"),message.string("created_at")?.let{CampusUi.date(it)}).joinToString(" · ")))
+                CampusUi.paragraph(this@CampusOpportunitiesActivity,this,CampusImages.text(message.string("content").orEmpty()))
+                CampusImages.attach(this@CampusOpportunitiesActivity,this,session,message.string("content").orEmpty())
+            }}
             s.outgoing.forEach{item->
-                val c=card("${if(item.status=="SENDING")"Sending…" else if(item.status=="UNCERTAIN")"Send not confirmed" else "Message not sent"}\n${JsonParser.parseString(item.body).asJsonObject.string("content")}\n${item.error}")
+                val content=JsonParser.parseString(item.body).asJsonObject.string("content").orEmpty()
+                val c=card("${if(item.status=="SENDING")"Sending…" else if(item.status=="UNCERTAIN")"Send not confirmed" else "Message not sent"}\n${CampusImages.text(content)}")
+                CampusImages.attach(this,c,session,content)
                 if(item.status!="SENDING") {
                     button(c,"Retry send"){
-                        if(item.status=="UNCERTAIN")AlertDialog.Builder(this).setTitle("Send this message again?")
+                        if(item.status=="UNCERTAIN")CampusUi.dialog(this).setTitle("Send this message again?")
                             .setMessage("The earlier send may have arrived. Check the conversation first to avoid sending it twice.")
                             .setPositiveButton("Send again"){_,_->model.retry(item,false)}.setNegativeButton("Cancel",null).show()
                         else model.retry(item,false)
                     }
                     button(c,"Dismiss"){model.retry(item,true)}
+                    if(item.error.isNotBlank())button(c,"Details"){CampusUi.dialog(this).setMessage(item.error).setPositiveButton("Done",null).show()}
                 }
             }
             if(!s.sending)button(body,"Write message"){message()}
         }else if(s.section=="editor"){
-            button(body,"Open listing editor"){if(s.draft==null)model.draft(s.detail?:jsonObject());showJobEditor()}
+            button(body,if(s.id.isBlank())"New listing" else "Edit listing"){if(s.draft==null)model.draft(s.detail?:jsonObject());showJobEditor()}
         }else for(item in s.items){
             val id=item.string("id")?:continue
-            val c=card(listOfNotNull(item.string("title")?:item.string("job_title")?:item.string("applicant_name")?:item.string("student_name"),item.string("status"),item.string("pitch_note"),item.string("last_message"),item.string("unread_count")?.let{"Unread: $it"}).joinToString("\n"))
+            val c=card(listOfNotNull(item.string("title")?:item.string("job_title")?:item.string("applicant_name")?:item.string("student_name"),item.string("status")?.let{CampusUi.label(it)},item.string("last_message")?.let{CampusImages.text(it).ifBlank{"Image"}}?.take(100),item.string("unread_count")?.takeIf{it!="0"}?.let{"$it unread"}).joinToString("\n"))
+            if(s.section in listOf("jobs","mine"))CampusImages.attach(this,c,session,item.string("description").orEmpty())
             when(s.section){
-                "jobs","mine"->button(c,"View opportunity"){model.open("job",id)}
-                "applications"->button(c,"View application"){model.open("application",id)}
+                "jobs","mine"->button(c,"View"){model.open("job",id)}
+                "applications"->button(c,"View"){model.open("application",id)}
                 "applicants"->{
-                    button(c,"View application"){model.open("application",id,s.id)}
+                    button(c,"View"){model.open("application",id,s.id)}
                     item.string("resume_url")?.let{url->button(c,"Open resume"){openLink(url)}}
-                    button(c,"Change application status"){AlertDialog.Builder(this).setItems(arrayOf("PENDING","SHORTLISTED","ACCEPTED","REJECTED")){_,position->model.action{model.mutate("applications/$id/status","PATCH",jsonObject("status" to arrayOf("PENDING","SHORTLISTED","ACCEPTED","REJECTED")[position]));model.load()}}.show()}
+                    button(c,"Change status"){CampusUi.dialog(this).setItems(arrayOf("Pending","Shortlisted","Accepted","Rejected")){_,position->model.action{model.mutate("applications/$id/status","PATCH",jsonObject("status" to arrayOf("PENDING","SHORTLISTED","ACCEPTED","REJECTED")[position]));model.load()}}.show()}
                 }
-                "conversations"->button(c,"Open private conversation"){model.open("messages",id,item.string("job_id")?:s.jobId)}
+                "conversations"->button(c,"Open chat"){model.open("messages",id,item.string("job_id")?:s.jobId)}
             }
         }
-        if(s.more)button(body,if(s.section=="messages")"Load older messages" else "Load more"){model.load(true)}
+        if(s.items.isEmpty() && s.detail==null && !s.busy && s.error.isBlank() && s.section !in listOf("editor","job","application","messages"))
+            body.addView(CampusUi.text(this,"Nothing here yet"))
+        if(s.more)button(body,if(s.section=="messages")"Older messages" else "Load more"){model.load(true)}
     }
     private fun openLink(url:String){val uri=Uri.parse(url);if(uri.scheme in listOf("https","http"))startActivity(Intent(Intent.ACTION_VIEW,uri))}
-    private fun choice(parent:LinearLayout,label:String,options:List<String>,selected:String?):Spinner {
-        parent.addView(TextView(this).apply{text=label})
-        return Spinner(this).apply {
-            adapter=ArrayAdapter(this@CampusOpportunitiesActivity,android.R.layout.simple_spinner_dropdown_item,
-                options.map{if(it.isEmpty())"Any" else it.lowercase().replace('_',' ').replaceFirstChar(Char::uppercaseChar)})
-            setSelection(options.indexOf(selected).coerceAtLeast(0));parent.addView(this)
+    private fun choice(parent:LinearLayout,label:String,options:List<String>,selected:String?):Spinner =
+        CampusUi.selector(this,parent,label).apply {
+            adapter=CampusUi.choices(this@CampusOpportunitiesActivity,options.map{if(it.isEmpty())"Any" else CampusUi.label(it)})
+            setSelection(options.indexOf(selected).coerceAtLeast(0))
         }
-    }
     private fun filters(){
         val fields=listOf("search","department")
-        val layout=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
-        val inputs=fields.associateWith{key->EditText(this).apply{hint=key;setText(model.state.value.filters[key]?:"");layout.addView(this)}}
+        val layout=CampusUi.column(this)
+        val inputs=fields.associateWith{key->CampusUi.input(this,layout,CampusUi.label(key),model.state.value.filters[key].orEmpty())}
         val options=mapOf("category" to listOf("")+categories,"location_type" to listOf("")+locations,"status" to listOf("OPEN","CLOSED"))
-        val choices=options.mapValues{(key,values)->choice(layout,key.replace('_',' '),values,model.state.value.filters[key])}
-        AlertDialog.Builder(this).setTitle("Opportunity filters").setView(ScrollView(this).apply{addView(layout)}).setPositiveButton("Apply"){_,_->
+        val choices=options.mapValues{(key,values)->choice(layout,CampusUi.label(key),values,model.state.value.filters[key])}
+        CampusUi.dialog(this).setTitle("Filters").setView(CampusUi.scroll(this,layout)).setPositiveButton("Apply"){_,_->
             val selected=inputs.mapValues{it.value.text.toString().trim()}+choices.mapValues{(key,input)->options.getValue(key)[input.selectedItemPosition]}
             model.filters(selected.filterValues{it.isNotEmpty()})
         }.setNegativeButton("Cancel",null).show()
     }
     private fun apply(id:String){
         val expected=model.state.value.session?.profile?.id
-        val layout=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        val layout=CampusUi.column(this)
         val previous=model.state.value.draft?.takeIf {it.string("apply_job")==id}
-        val pitch=EditText(this).apply{hint="Your pitch";setText(previous?.string("pitch_note")?:"");layout.addView(this)}
-        val resume=EditText(this).apply{hint="Resume URL (optional)";setText(previous?.string("resume_url")?:"");layout.addView(this)}
+        val pitch=CampusUi.input(this,layout,"Your pitch",previous?.string("pitch_note").orEmpty(),multiline=true)
+        val resume=CampusUi.input(this,layout,"Resume link (optional)",previous?.string("resume_url").orEmpty()).apply { inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI }
         val watcher=object:android.text.TextWatcher{
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
             override fun afterTextChanged(s:android.text.Editable?){}
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){model.draft(jsonObject("apply_job" to id,"pitch_note" to pitch.text.toString(),"resume_url" to resume.text.toString()))}
         }
         pitch.addTextChangedListener(watcher);resume.addTextChangedListener(watcher)
-        val dialog=AlertDialog.Builder(this).setTitle("Apply to opportunity").setView(layout).setPositiveButton("Submit",null).setNegativeButton("Cancel",null).create()
+        val dialog=CampusUi.dialog(this).setTitle("Apply").setView(CampusUi.scroll(this,layout)).setPositiveButton("Submit",null).setNegativeButton("Cancel",null).create()
         dialog.setOnShowListener{dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{model.action{
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
             try {
                 require(pitch.text.toString().isNotBlank()){"Enter a short pitch for your application."}
                 model.mutate("jobs/$id/apply",body=jsonObject("pitch_note" to pitch.text.toString(),"resume_url" to resume.text.toString().trim().takeIf{it.isNotBlank()}),expectedAccount=expected)
                 model.draft(null);dialog.dismiss();model.open("applications")
-            }catch(e:CancellationException){throw e}catch(e:Exception){Toast.makeText(this,e.message,Toast.LENGTH_LONG).show();throw e}
+            }catch(e:CancellationException){throw e}catch(e:Exception){Toast.makeText(this,e.message,Toast.LENGTH_LONG).show()}
             finally {dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true}
         }}};dialog.show()
     }
     private fun message(){
         val expected=model.state.value.session?.profile?.id
         val conversation=model.state.value.id
-        val input=EditText(this).apply{hint="Message";setText(model.state.value.draft?.string("message")?:"")}
+        val layout=CampusUi.column(this)
+        val input=CampusUi.input(this,layout,"Message",model.state.value.draft?.string("message").orEmpty(),multiline=true)
         input.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){};override fun afterTextChanged(s:android.text.Editable?){};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){model.draft(jsonObject("message" to s?.toString()))}})
-        AlertDialog.Builder(this).setTitle("Send message").setView(input).setPositiveButton("Send"){_,_->model.send(input.text.toString(),expected,conversation)}.setNegativeButton("Keep draft",null).show()
+        CampusUi.dialog(this).setTitle("Message").setView(CampusUi.scroll(this,layout)).setPositiveButton("Send"){_,_->model.send(input.text.toString(),expected,conversation)}.setNegativeButton("Keep draft",null).show()
     }
     private fun showJobEditor(){
         if(editor!=null)return
         val initial=model.state.value.draft?:return
         val expected=model.state.value.session?.profile?.id ?: return
-        val layout=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(20,10,20,10)}
+        val layout=CampusUi.column(this)
         val fields=listOf("title","description","location","stipend","skills_required","department","deadline")
-        val values=fields.associateWith{key->EditText(this).apply{hint=key.replace('_',' ')+(if(key=="deadline")" (YYYY-MM-DD)" else "");setText(initial.string(key)?:"");isSaveEnabled=false;layout.addView(this)}}
+        val values=fields.associateWith{key->CampusUi.input(this,layout,CampusUi.label(key)+(if(key=="deadline")" (YYYY-MM-DD)" else ""),initial.string(key).orEmpty(),multiline=key=="description").apply { isSaveEnabled=false }}
         val choices=mapOf("category" to (categories to choice(layout,"Category",categories,initial.string("category")?:"CAMPUS_GIG")),
             "location_type" to (locations to choice(layout,"Location type",locations,initial.string("location_type")?:"ON_CAMPUS")))
         choices.forEach{(key,pair)->pair.second.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
@@ -297,7 +339,7 @@ class CampusOpportunitiesActivity:AppCompatActivity(){
             }
         }}
         for((key,input)in values)input.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){};override fun afterTextChanged(s:android.text.Editable?){};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){val draft=model.state.value.draft?.deepCopy()?:jsonObject();draft.addProperty(key,s?.toString());model.draft(draft)}})
-        val dialog=AlertDialog.Builder(this).setTitle("Opportunity listing").setView(ScrollView(this).apply{addView(layout)}).setPositiveButton("Save",null).setNegativeButton("Keep draft",null).create()
+        val dialog=CampusUi.dialog(this).setTitle(if(initial.string("id")==null)"New listing" else "Edit listing").setView(CampusUi.scroll(this,layout)).setPositiveButton("Save",null).setNegativeButton("Keep draft",null).create()
         editor=dialog;dialog.setOnDismissListener{editor=null};dialog.setOnShowListener{dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{model.action{
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
             try {
@@ -309,15 +351,10 @@ class CampusOpportunitiesActivity:AppCompatActivity(){
                 val id=initial.string("id")
                 val result=model.mutate(if(id==null)"jobs" else "jobs/$id",if(id==null)"POST" else "PUT",body,expectedAccount=expected).asJsonObject
                 model.draft(null);dialog.dismiss();model.open("job",result.string("id")?:id!!)
-            }catch(e:CancellationException){throw e}catch(e:Exception){Toast.makeText(this,e.message,Toast.LENGTH_LONG).show();throw e}
+            }catch(e:CancellationException){throw e}catch(e:Exception){Toast.makeText(this,e.message,Toast.LENGTH_LONG).show()}
             finally {dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true}
         }}};dialog.show()
     }
-    private fun images(parent:LinearLayout,session:CampusSession,description:String){
-        val ids=Regex("!\\[[^]]*]\\((?:/[^?#() ]*)?/api/images/([a-f0-9-]{36})\\)").findAll(description).map{it.groupValues[1]}.distinct().take(10)
-        for(id in ids){val image=ImageView(this).apply{adjustViewBounds=true;contentDescription="Opportunity description image"};parent.addView(image);lifecycleScope.launch{
-            runCatching{val bytes=CampusTransport.authenticated(this@CampusOpportunitiesActivity,session).image(id);withContext(Dispatchers.Default){BitmapFactory.decodeByteArray(bytes,0,bytes.size)}}.onSuccess{if(CampusSessionStore(this@CampusOpportunitiesActivity).read()?.generation==session.generation&&model.state.value.section=="job")image.setImageBitmap(it)}
-        }}
-    }
-    override fun onSupportNavigateUp():Boolean{finish();return true}
+    override fun onSaveInstanceState(outState:Bundle){outState.putString("list_section",listSection);super.onSaveInstanceState(outState)}
+    override fun onSupportNavigateUp():Boolean{onBackPressedDispatcher.onBackPressed();return true}
 }

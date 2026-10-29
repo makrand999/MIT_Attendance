@@ -4,10 +4,6 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.AndroidViewModel
@@ -35,6 +31,7 @@ internal class CampusViewModel(application: Application) : AndroidViewModel(appl
         job = viewModelScope.launch {
             mutableState.value = CampusScreen(repository.cached(), busy = true)
             try { val session=request(); mutableState.value = CampusScreen(session, validated = true) }
+            catch (error: kotlinx.coroutines.CancellationException) { throw error }
             catch (error: Exception) {
                 mutableState.value = CampusScreen(repository.cached(), message = campusError(error))
             }
@@ -51,35 +48,29 @@ class CampusActivity : AppCompatActivity() {
     private val model: CampusViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        supportActionBar?.apply { title = "Akatsuki"; setDisplayHomeAsUpEnabled(true) }
-        val padding = (20 * resources.displayMetrics.density).toInt()
-        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(padding, padding, padding, padding) }
-        fun label(value: String) = TextView(this).apply { text = value; setPadding(0, padding / 2, 0, padding / 2); column.addView(this) }
-        label("Akatsuki uses the ERP login already saved in this app. Find opportunities, apply, manage your listings and message other students.")
-        val profile = label("")
-        val status = label("")
-        val refresh = Button(this).apply { text = "Connect / refresh Akatsuki"; column.addView(this) }
-        val signOut = Button(this).apply { text = "Sign out of Akatsuki"; column.addView(this) }
-        Button(this).apply { text = "Opportunities, applications and chat"; column.addView(this); setOnClickListener { startActivity(Intent(this@CampusActivity, CampusOpportunitiesActivity::class.java)) } }
-        label("The browser workspace is also available with a separate browser sign-in.")
-        Button(this).apply {
-            text = "Open Akatsuki in browser"; column.addView(this)
-            setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CampusHttp.WEB_WORKSPACE))) }
-        }
-        setContentView(ScrollView(this).apply { addView(column) })
-        refresh.setOnClickListener { model.refresh() }
-        signOut.setOnClickListener { model.signOut() }
+        val column = CampusUi.column(this)
+        val profile = CampusUi.card(this, column)
+        val name = CampusUi.text(this, "Akatsuki", heading = true).also { profile.addView(it) }
+        val detail = CampusUi.text(this, "").also { profile.addView(it) }
+        val status = CampusUi.text(this, "").also { column.addView(it) }
+        val connect=CampusUi.button(this,column,"Connect") { model.refresh() }
+        CampusUi.button(this, column, "Opportunities") { startActivity(Intent(this, CampusOpportunitiesActivity::class.java)) }
+        CampusUi.button(this, column, "Class alerts") { startActivity(Intent(this, CampusAlertsActivity::class.java)) }
+        CampusUi.screen(this, "Akatsuki", column, listOf(
+            "Refresh" to { model.refresh(); Unit },
+            "Open in browser" to { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CampusHttp.WEB_WORKSPACE))) },
+            "Sign out" to { model.signOut() }
+        ))
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 model.state.collect { state ->
                     val cached = state.session
-                    profile.text = cached?.profile?.let {
-                        "${it.name}\n${it.roll_number} · ${it.department}\n" +
-                            if (state.validated) "Verified Akatsuki profile" else "Cached profile"
-                    } ?: "Connect using your saved ERP login to see your Akatsuki profile."
-                    status.text = if (state.busy) "Connecting to Akatsuki…" else state.message
-                    refresh.isEnabled = !state.busy
-                    signOut.isEnabled = cached != null || state.busy
+                    name.text = cached?.profile?.name ?: "Connect to Akatsuki"
+                    detail.text = cached?.profile?.let { listOf(it.roll_number, it.department).filter { value -> value.isNotBlank() }.joinToString(" · ") }
+                        ?: "ERP account"
+                    connect.visibility=if(cached==null&&!state.busy)android.view.View.VISIBLE else android.view.View.GONE
+                    CampusUi.status(status, if (state.busy) "Connecting…" else state.message)
+
                 }
             }
         }

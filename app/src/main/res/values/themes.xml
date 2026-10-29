@@ -31,6 +31,14 @@
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.Material3.MaterialAlertDialog</item>
     </style>
 
+    <style name="ThemeOverlay.MITAttendance.CampusDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/medkit_cream</item>
+        <item name="android:fontFamily">@font/nunito</item>
+        <item name="fontFamily">@font/nunito</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.MITAttendance.MedKitButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.MITAttendance.MedKitButton.Ghost</item>
+    </style>
+
     <style name="AppPopupTheme" parent="ThemeOverlay.Material3">
         <item name="android:textColor">?attr/colorOnSurface</item>
         <item name="android:colorBackground">?attr/colorSurface</item>

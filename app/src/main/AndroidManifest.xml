@@ -47,6 +47,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".campus.CampusAlertsActivity" android:exported="false" />
+        <activity android:name=".campus.CampusImageActivity" android:exported="false" />
         <activity android:name=".campus.CampusOpportunitiesActivity" android:exported="false" />
         <receiver android:name=".campus.CampusReminderReceiver" android:exported="false" />
         <activity android:name=".campus.CampusActivity" android:exported="false" />

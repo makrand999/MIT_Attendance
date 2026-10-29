@@ -95,7 +95,7 @@ internal class CampusAlertsViewModel(app: Application) : AndroidViewModel(app) {
         refreshSelected(current)
     }
     fun draft(edit:CachedCampusAlert?=null) {
-        mutable.update { it.copy(editing=edit,draftAccount=it.session?.profile?.id,draftClass=it.session?.selectedClass,draft=edit?.let { a -> JsonParser.parseString(a.json).asJsonObject.let { raw ->
+        mutable.update { it.copy(error="",editing=edit,draftAccount=it.session?.profile?.id,draftClass=it.session?.selectedClass,draft=edit?.let { a -> JsonParser.parseString(a.json).asJsonObject.let { raw ->
             jsonObject("subject_id" to a.subjectId,"type" to a.type,"topic" to a.topic,"description" to a.description,"due_at" to a.dueAt,"expires_at" to a.expiresAt,"publish_at" to raw.string("publish_at"),"draft" to (a.status=="DRAFT"))
         } } ?: jsonObject("subject_id" to null,"type" to "NOTICE","topic" to "","description" to "","due_at" to null,"expires_at" to null,"publish_at" to null,"draft" to false)) }
     }
@@ -132,10 +132,12 @@ class CampusAlertsActivity : AppCompatActivity() {
     private var classIds=emptyList<String>()
     private var targetHandled=false
     private var focusedAlert:String?=null
+    private var filterSelection=0
     private var hidden=false
     private var trash=false
     private var archive=false
     private var editor:AlertDialog?=null
+    private var editorStatus:TextView?=null
     private var renderJob:Job?=null
     private var socket:Job?=null
     private var socketGeneration:String?=null
@@ -143,26 +145,36 @@ class CampusAlertsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         focusedAlert=if(savedInstanceState==null)intent.getStringExtra("alert") else savedInstanceState.getString("focused_alert")
         targetHandled=savedInstanceState?.getBoolean("target_handled")?:false
-        supportActionBar?.apply { title="Class alerts";setDisplayHomeAsUpEnabled(true) }
-        content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,16,24,16) }
-        status=TextView(this).also { content.addView(it) }
-        classes=Spinner(this).also { content.addView(it) }
+        filterSelection=savedInstanceState?.getInt("filter")?:0
+        hidden=filterSelection==1;trash=filterSelection==2;archive=filterSelection==3
+        content=CampusUi.column(this)
+        status=CampusUi.text(this, "").also { content.addView(it) }
+        classes=CampusUi.selector(this,content,"Class")
         classes.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent:android.widget.AdapterView<*>?) {}
             override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:android.view.View?,position:Int,id:Long) { val c=classIds.getOrNull(position) ?: return; if(model.state.value.session?.selectedClass!=c) {focusedAlert=null;model.select(c)} }
         }
-        fun button(text:String,action:()->Unit) { content.addView(Button(this).apply { this.text=text;setOnClickListener { action() } }) }
-        button("Refresh / retry connection") { model.refresh() }
-        button("Compose alert") { model.draft(); showEditor() }
-        button("Hidden / visible") { hidden=!hidden;render(model.state.value) }
-        button("Active / personal trash") { trash=!trash;render(model.state.value) }
-        button("Active / archive") { archive=!archive;render(model.state.value) }
-        button("Show all class alerts") { focusedAlert=null;render(model.state.value) }
-        button("Map attendance subject badges") { mapSubjects() }
-        button("Request class membership") { requestMembership() }
-        button("Legacy alerts (read only)") { startActivity(Intent(this,com.mit.attendance.ui.alerts.AlertsActivity::class.java).putExtra("legacy",true)) }
+        val filters=CampusUi.selector(this,content)
+        filters.adapter=CampusUi.choices(this,listOf("Active","Hidden","Trash","Archive"))
+        filters.setSelection(filterSelection)
+        filters.onItemSelectedListener=object:AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent:AdapterView<*>?) {}
+            override fun onItemSelected(parent:AdapterView<*>?,view:android.view.View?,position:Int,id:Long) {
+                if(position==filterSelection)return
+                filterSelection=position
+                hidden=position==1;trash=position==2;archive=position==3;focusedAlert=null
+                render(model.state.value)
+            }
+        }
         list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };content.addView(list)
-        setContentView(ScrollView(this).apply { addView(content) })
+        CampusUi.screen(this,"Class alerts",content,listOf(
+            "New alert" to { model.draft(); showEditor() },
+            "Refresh" to { model.refresh(); Unit },
+            "All alerts" to { focusedAlert=null;render(model.state.value) },
+            "Link subjects" to { mapSubjects() },
+            "Join class" to { requestMembership() },
+            "Legacy alerts" to { startActivity(Intent(this,com.mit.attendance.ui.alerts.AlertsActivity::class.java).putExtra("legacy",true)) }
+        ))
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) {
             try { model.state.collect { render(it) } }
             finally { socket?.cancel(); socketGeneration=null }
@@ -177,13 +189,14 @@ class CampusAlertsActivity : AppCompatActivity() {
         if(state.draft==null&&editor!=null)editor?.dismiss()
         editor?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled=!state.saving
         editor?.getButton(AlertDialog.BUTTON_NEGATIVE)?.isEnabled=!state.saving
-        status.text=if(state.busy) "Synchronizing…" else state.error
+        CampusUi.status(status,if(state.draft!=null) "" else if(state.busy) "Syncing…" else state.error)
+        editorStatus?.let { CampusUi.status(it,if(state.saving)"Saving…" else state.error) }
         val ids=state.classes.mapNotNull { it.string("id") }
-        if(ids!=classIds) {classIds=ids;classes.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,state.classes.map { it.string("display_name") ?: "Class" })}
+        if(ids!=classIds) {classIds=ids;classes.adapter=CampusUi.choices(this,state.classes.map { it.string("display_name") ?: "Class" })}
         state.session?.selectedClass?.let { val position=classIds.indexOf(it);if(position>=0&&classes.selectedItemPosition!=position)classes.setSelection(position) }
         list.removeAllViews()
         val session=state.session ?: return
-        if(intent.getStringExtra("account")?.let { it!=session.profile.id }==true){status.text="This link belongs to another campus account.";return}
+        if(intent.getStringExtra("account")?.let { it!=session.profile.id }==true){CampusUi.status(status,"Switch accounts to open this link.");return}
         if(socketGeneration!=session.generation&&lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)){
             socket?.cancel();socketGeneration=session.generation
             socket=lifecycleScope.launch {CampusSocket(CampusSessionStore(this@CampusAlertsActivity),this@CampusAlertsActivity).run(session){
@@ -196,9 +209,9 @@ class CampusAlertsActivity : AppCompatActivity() {
         val currentClass=state.classes.firstOrNull { it.string("id")==session.selectedClass }
         val rep=currentClass?.string("role")=="REPRESENTATIVE"
         for(pending in state.outgoing) {
-            val card=card();card.addView(TextView(this).apply { text="${pending.status}: ${pending.method} alert\n${pending.error}\n${runCatching { JsonParser.parseString(pending.body).asJsonObject.getAsJsonObject("content")?.string("topic") }.getOrNull() ?: pending.resourceId}" })
-            addButton(card,"Retry") {model.pending(pending,false)};addButton(card,"Cancel pending change") {model.pending(pending,true)}
-            if(pending.status=="CONFLICT") addButton(card,"Resolve with current alert") {
+            val card=card();card.addView(CampusUi.text(this,listOfNotNull(runCatching { JsonParser.parseString(pending.body).asJsonObject.getAsJsonObject("content")?.string("topic") }.getOrNull() ?: "Pending alert",CampusUi.label(pending.status),pending.error.takeIf { it.isNotBlank() }).joinToString("\n")))
+            addButton(card,"Retry") {model.pending(pending,false)};addButton(card,"Cancel") {model.pending(pending,true)}
+            if(pending.status=="CONFLICT") addButton(card,"Resolve conflict") {
                 val original=state.alerts.firstOrNull { it.id==pending.resourceId } ?: return@addButton
                 model.draft(original)
                 runCatching { JsonParser.parseString(pending.body).asJsonObject.getAsJsonObject("content") }.getOrNull()?.let {model.updateDraft(it.deepCopy())}
@@ -209,53 +222,75 @@ class CampusAlertsActivity : AppCompatActivity() {
         renderJob?.cancel()
         renderJob=lifecycleScope.launch {
             val mapped=if(filterName!=null) model.repository.dao.links(session.profile.id,session.selectedClass?:"").firstOrNull {it.localName==filterName}?.subjectId else null
-            if(model.state.value.session?.generation!=session.generation) return@launch
+            if(model.state.value.session?.let {it.generation!=session.generation||it.selectedClass!=session.selectedClass}!=false) return@launch
             for(a in state.alerts) {
                 if(focusedAlert!=null&&a.id!=focusedAlert)continue
                 val personal=state.personal.firstOrNull {it.alertId==a.id}
                 if(focusedAlert==null) {
                     if(filterName!=null && a.subjectId!=mapped) continue
-                    if((personal?.hidden==true)!=hidden || (personal?.trashed==true)!=trash || (!trash && (a.status=="EXPIRED")!=archive)) continue
+                    val excluded=when {
+                        trash -> personal?.trashed!=true
+                        hidden -> personal?.hidden!=true || personal.trashed
+                        archive -> a.status!="EXPIRED" || personal?.trashed==true
+                        else -> personal?.hidden==true || personal?.trashed==true || a.status=="EXPIRED"
+                    }
+                    if(excluded) continue
                 }
                 val card=card()
-                card.addView(TextView(this@CampusAlertsActivity).apply { text="${a.topic}\n${a.authorName} · ${a.type} · ${a.status}\n${a.description}\nDue: ${a.dueAt ?: "—"}";textSize=16f;setOnClickListener {model.personal(a,seen=true)} })
-                addButton(card,if(trash) "Restore personal trash" else "Move to personal trash") {model.personal(a,trashed=!trash)}
-                addButton(card,if(hidden) "Unhide for me" else "Hide for me") {model.personal(a,hidden=!hidden)}
+                card.addView(CampusUi.text(this@CampusAlertsActivity,a.topic,true))
+                card.addView(CampusUi.text(this@CampusAlertsActivity,listOfNotNull(a.authorName,CampusUi.label(a.type),a.status.takeIf{it!="PUBLISHED"}?.let{CampusUi.label(it)},a.dueAt?.let{"Due ${CampusUi.date(it)}"}).joinToString(" · ")))
+                card.addView(CampusUi.text(this@CampusAlertsActivity,CampusImages.text(a.description)).apply {
+                    maxLines=3;ellipsize=android.text.TextUtils.TruncateAt.END
+                })
+                CampusImages.attach(this@CampusAlertsActivity,card,session,a.description)
+                addButton(card,"Read") {
+                    model.personal(a,seen=true)
+                    val detail=CampusUi.column(this@CampusAlertsActivity)
+                    CampusUi.paragraph(this@CampusAlertsActivity,detail,CampusImages.text(a.description))
+                    CampusImages.attach(this@CampusAlertsActivity,detail,session,a.description)
+                    CampusUi.dialog(this@CampusAlertsActivity).setTitle(a.topic).setView(CampusUi.scroll(this@CampusAlertsActivity,detail)).setPositiveButton("Done",null).show()
+                }
+                addButton(card,if(personal?.trashed==true) "Restore" else "Trash") {model.personal(a,trashed=personal?.trashed!=true)}
+                addButton(card,if(personal?.hidden==true) "Unhide" else "Hide") {model.personal(a,hidden=personal?.hidden!=true)}
                 if(rep||a.authorId==session.profile.id) {
                     addButton(card,"Edit") {model.draft(a);showEditor()}
-                    addButton(card,"Delete for everyone") {AlertDialog.Builder(this@CampusAlertsActivity).setMessage("Delete ${a.topic} for everyone?").setPositiveButton("Delete") {_,_->model.delete(a)}.setNegativeButton("Cancel",null).show()}
+                    addButton(card,"Delete for everyone") {CampusUi.dialog(this@CampusAlertsActivity).setMessage("Delete ${a.topic} for everyone?").setPositiveButton("Delete") {_,_->model.delete(a)}.setNegativeButton("Cancel",null).show()}
                 }
-                if(a.status=="PUBLISHED")addButton(card,"Set local reminder") {reminder(session,a)}
+                if(a.status=="PUBLISHED")addButton(card,"Remind me") {reminder(session,a)}
+            }
+            if(list.childCount==0&&!state.busy&&state.error.isBlank()) {
+                list.addView(CampusUi.text(this@CampusAlertsActivity,if(state.classes.isEmpty())"Join a class to see alerts" else "No alerts"))
             }
         }
         if(state.draft!=null&&editor==null)showEditor()
     }
-    private fun card():LinearLayout=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(0,20,0,20);list.addView(this)}
-    private fun addButton(parent:LinearLayout,label:String,action:()->Unit) {parent.addView(Button(this).apply {text=label;setOnClickListener {action()} })}
+    private fun card():LinearLayout=CampusUi.card(this,list)
+    private fun addButton(parent:LinearLayout,label:String,action:()->Unit) {CampusUi.action(this,parent,label,action)}
     private fun showEditor() {
         if(editor!=null)return
         val state=model.state.value;val draft=state.draft ?: return
-        val layout=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(24,12,24,12)}
-        fun field(key:String,label:String,default:String=""):EditText=EditText(this).apply {
-            hint=label;setText(draft.string(key)?:default);isSaveEnabled=false
+        val layout=CampusUi.column(this)
+        editorStatus=CampusUi.text(this,"").also { it.visibility=android.view.View.GONE;layout.addView(it) }
+        fun field(key:String,label:String,default:String=""):EditText=CampusUi.input(this,layout,label,draft.string(key)?:default,multiline=key=="description").apply {
+            isSaveEnabled=false
             addTextChangedListener(object:android.text.TextWatcher {
                 override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
                 override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { val copy=model.state.value.draft?.deepCopy()?:return;copy.addProperty(key,s?.toString());model.updateDraft(copy) }
                 override fun afterTextChanged(s:android.text.Editable?) {}
-            });layout.addView(this)
+            })
         }
         field("topic","Topic");field("description","Description")
         val types=listOf("NOTICE","HOMEWORK","EXAM","ASSIGNMENT","OTHER")
-        val type=Spinner(this);layout.addView(type)
-        type.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,types.map {it.lowercase().replaceFirstChar(Char::uppercaseChar)})
+        val type=CampusUi.selector(this,layout,"Type")
+        type.adapter=CampusUi.choices(this,types.map {CampusUi.label(it)})
         type.setSelection(types.indexOf(draft.string("type")).coerceAtLeast(0))
         type.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent:android.widget.AdapterView<*>?) {}
             override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:android.view.View?,position:Int,id:Long) {val copy=model.state.value.draft?.deepCopy()?:return;copy.addProperty("type",types[position]);model.updateDraft(copy)}
         }
         val subjects=state.subjects
-        val spinner=Spinner(this);layout.addView(spinner)
-        spinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("Class-wide")+subjects.map {it.string("name")?:"Subject"})
+        val spinner=CampusUi.selector(this,layout,"Subject")
+        spinner.adapter=CampusUi.choices(this,listOf("Class-wide")+subjects.map {it.string("name")?:"Subject"})
         spinner.setSelection(subjects.indexOfFirst {it.string("id")==draft.string("subject_id")}.let {if(it<0)0 else it+1})
         spinner.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent:android.widget.AdapterView<*>?) {}
@@ -263,9 +298,10 @@ class CampusAlertsActivity : AppCompatActivity() {
         }
         val zone=ZoneId.of(state.classes.firstOrNull {it.string("id")==state.session?.selectedClass}?.string("timezone")?:"Asia/Kolkata")
         fun dateField(key:String,label:String) {
-            val row=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL};layout.addView(row)
-            val choose=Button(this);row.addView(choose)
-            fun caption(){val value=model.state.value.draft?.string(key);choose.text="$label ($zone): "+(value?.let {runCatching {Instant.parse(it).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm"))}.getOrNull()}?:"Choose time")}
+            val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL};layout.addView(row)
+            val choose=CampusUi.button(this,row,label) {}
+            choose.layoutParams=LinearLayout.LayoutParams(0,-2,1f)
+            fun caption(){val value=model.state.value.draft?.string(key);choose.text="$label · "+(value?.let {runCatching {Instant.parse(it).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm"))}.getOrNull()}?:"Not set")}
             caption()
             choose.setOnClickListener {
                 val selected=model.state.value.draft?.string(key)?.let {runCatching {Instant.parse(it).atZone(zone)}.getOrNull()}?:ZonedDateTime.now(zone)
@@ -276,14 +312,29 @@ class CampusAlertsActivity : AppCompatActivity() {
                     model.updateDraft(copy);caption()
                 },selected.hour,selected.minute,true).show()},selected.year,selected.monthValue-1,selected.dayOfMonth).show()
             }
-            addButton(row,"Clear $label") {val copy=model.state.value.draft?.deepCopy()?:return@addButton;copy.add(key,JsonNull.INSTANCE);model.updateDraft(copy);caption()}
+            CampusUi.button(this,row,"Clear") {
+                model.state.value.draft?.deepCopy()?.let { copy -> copy.add(key,JsonNull.INSTANCE);model.updateDraft(copy);caption() }
+            }.apply {
+                contentDescription="Clear $label"
+                backgroundTintList=android.content.res.ColorStateList.valueOf(androidx.core.content.ContextCompat.getColor(this@CampusAlertsActivity,com.mit.attendance.R.color.white))
+            }
         }
         dateField("due_at","Due");dateField("expires_at","Expiry")
-        if(state.classes.any {it.string("id")==state.session?.selectedClass&&it.string("role")=="REPRESENTATIVE"}&&state.editing?.status !in listOf("PUBLISHED","EXPIRED"))dateField("publish_at","Scheduled publication")
-        addButton(layout,"Preview") {val preview=model.state.value.draft;AlertDialog.Builder(this).setTitle(preview?.string("topic")).setMessage(preview?.string("description")).setPositiveButton("Back",null).show()}
+        if(state.classes.any {it.string("id")==state.session?.selectedClass&&it.string("role")=="REPRESENTATIVE"}&&state.editing?.status !in listOf("PUBLISHED","EXPIRED"))dateField("publish_at","Publish")
+        layout.addView(CampusUi.text(this,"Times in $zone"))
+        addButton(layout,"Preview") {
+            val preview=model.state.value.draft
+            val detail=CampusUi.column(this)
+            CampusUi.paragraph(this,detail,CampusImages.text(preview?.string("description").orEmpty()))
+            state.session?.let { CampusImages.attach(this,detail,it,preview?.string("description").orEmpty()) }
+            CampusUi.dialog(this).setTitle(preview?.string("topic")).setView(CampusUi.scroll(this,detail)).setPositiveButton("Back",null).show()
+        }
         layout.addView(CheckBox(this).apply {text="Private draft";isChecked=draft.get("draft")?.asBoolean==true;setOnCheckedChangeListener {_,checked->val copy=model.state.value.draft?.deepCopy()?:return@setOnCheckedChangeListener;copy.addProperty("draft",checked);model.updateDraft(copy)} })
-        val dialog=AlertDialog.Builder(this).setTitle("Compose / edit alert").setView(ScrollView(this).apply {addView(layout)}).setPositiveButton("Queue save",null).setNegativeButton("Cancel") {_,_->model.closeDraft()}.create()
-        editor=dialog;dialog.setOnDismissListener {editor=null};dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        val dialog=CampusUi.dialog(this).setTitle(if(state.editing==null)"New alert" else "Edit alert").setView(CampusUi.scroll(this,layout)).setPositiveButton("Save",null).setNegativeButton("Cancel") {_,_->model.closeDraft()}.create()
+        editor=dialog
+        dialog.setOnCancelListener {model.closeDraft()}
+        dialog.setOnDismissListener {editor=null;editorStatus=null}
+        dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val copy=model.state.value.draft?.deepCopy()?:return@setOnClickListener
             try {
                 require(!copy.string("topic").isNullOrBlank()) {"Enter a topic."}
@@ -293,16 +344,27 @@ class CampusAlertsActivity : AppCompatActivity() {
         }};dialog.show()
     }
     private fun requestMembership() {
-        val layout=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(24,12,24,12)}
-        val input=EditText(this).apply {hint="Class ID from representative";layout.addView(this)}
-        val invite=EditText(this).apply {hint="Invite ID (optional)";layout.addView(this)}
-        val secret=EditText(this).apply {hint="Invite secret (optional)";inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD;layout.addView(this)}
-        val dialog=AlertDialog.Builder(this).setTitle("Join a class").setView(layout).setPositiveButton("Request access",null).setNegativeButton("Cancel",null).create()
+        val layout=CampusUi.column(this)
+        val input=CampusUi.input(this,layout,"Class ID").apply {inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS}
+        val inviteFields=CampusUi.column(this).apply {visibility=android.view.View.GONE}
+        val invite=CampusUi.input(this,inviteFields,"Invite ID").apply {inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS}
+        val secret=CampusUi.input(this,inviteFields,"Invite secret").apply {inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD}
+        var inviteToggle:android.widget.Button?=null
+        inviteToggle=CampusUi.button(this,layout,"Use invite") {
+            val show=inviteFields.visibility!=android.view.View.VISIBLE
+            inviteFields.visibility=if(show)android.view.View.VISIBLE else android.view.View.GONE
+            inviteToggle?.text=if(show)"Remove invite" else "Use invite"
+            if(!show){invite.text.clear();secret.text.clear()}
+        }
+        layout.addView(inviteFields)
+        val dialog=CampusUi.dialog(this).setTitle("Join a class").setView(CampusUi.scroll(this,layout)).setPositiveButton("Join",null).setNegativeButton("Cancel",null).create()
         var key=UUID.randomUUID().toString()
         var previousBody:String?=null
         dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {model.action {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
+            try {
             val session=model.state.value.session ?: CampusRepository(this).refresh()
-            val id=input.text.toString().trim();require(id.matches(Regex("[A-Za-z0-9-]+")))
+            val id=input.text.toString().trim();require(id.matches(Regex("[A-Za-z0-9-]+"))) {"Enter a class ID."}
             val inviteId=invite.text.toString().trim();val inviteSecret=secret.text.toString()
             require(inviteId.isBlank()==inviteSecret.isBlank()) {"Enter both the invite ID and secret, or leave both empty."}
             val body=jsonObject()
@@ -311,22 +373,24 @@ class CampusAlertsActivity : AppCompatActivity() {
             if(previousBody!=null&&previousBody!=content)key=UUID.randomUUID().toString()
             previousBody=content
             body.addProperty("idempotency_key",key)
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
-            try {
                 val result=CampusTransport.authenticated(this@CampusAlertsActivity,session).request("v1/classes/$id/join-requests","POST",body.toString()).asJsonObject
                 secret.text.clear();dialog.dismiss()
                 Toast.makeText(this,if(result.string("state")=="APPROVED")"You joined the class." else "Request sent for representative approval.",Toast.LENGTH_LONG).show()
                 model.refresh()
-            } finally {dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true}
+            } catch(error:CancellationException) {throw error}
+            catch(error:Exception) {Toast.makeText(this,error.message?:"Could not join class",Toast.LENGTH_LONG).show()}
+            finally {dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true}
         }}}
         dialog.show()
     }
     private fun mapSubjects() {model.action {
         val session=model.state.value.session ?: return@action;val c=session.selectedClass ?: return@action
         val local=model.repository.db.subjectDao().getAllSubjectsList()
-        AlertDialog.Builder(this).setTitle("Choose attendance subject").setItems(local.map {it.subjectName}.toTypedArray()) {_,position->
+        if(local.isEmpty()){Toast.makeText(this,"No attendance subjects",Toast.LENGTH_SHORT).show();return@action}
+        CampusUi.dialog(this).setTitle("Attendance subject").setItems(local.map {it.subjectName}.toTypedArray()) {_,position->
             val subjects=model.state.value.subjects
-            AlertDialog.Builder(this).setTitle("Match server subject").setItems(subjects.map {it.string("name")?:"Subject"}.toTypedArray()) {_,server->model.action {model.repository.dao.link(CampusSubjectLink(session.profile.id,c,local[position].subjectName,subjects[server].string("id")!!))}}.show()
+            if(subjects.isEmpty()){Toast.makeText(this,"No class subjects",Toast.LENGTH_SHORT).show();return@setItems}
+            CampusUi.dialog(this).setTitle("Akatsuki subject").setItems(subjects.map {it.string("name")?:"Subject"}.toTypedArray()) {_,server->model.action {model.repository.dao.link(CampusSubjectLink(session.profile.id,c,local[position].subjectName,subjects[server].string("id")!!))}}.show()
         }.show()
     }}
     private fun reminder(session:CampusSession,alert:CachedCampusAlert) {
@@ -335,6 +399,7 @@ class CampusAlertsActivity : AppCompatActivity() {
     }
     override fun onSupportNavigateUp():Boolean {finish();return true}
     override fun onSaveInstanceState(outState:Bundle) {
+        outState.putInt("filter",filterSelection)
         outState.putString("focused_alert",focusedAlert)
         outState.putBoolean("target_handled",targetHandled)
         super.onSaveInstanceState(outState)

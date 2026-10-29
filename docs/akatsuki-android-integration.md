@@ -47,3 +47,17 @@ ANDROID_HOME=/home/max/android-sdk ./gradlew --offline :app:assembleDebug
 ```
 
 Artifact: `app/build/outputs/apk/debug/app-debug.apk`.
+
+## Native presentation
+
+Akatsuki shares the app's cream surfaces, rounded cards, Nunito text, outlined inputs,
+and pastel actions. Forms and dialogs use the same shared presentation helpers.
+Secondary card actions live under More; long content expands through Read more.
+
+Images in opportunity descriptions, alerts, and messages use one compact attachment
+row per item. No image is fetched or decoded in a card. Tapping the row opens an
+internal full-screen viewer with fit-to-screen sizing, image paging, loading, and
+retry states. It uses the existing authenticated image endpoint and checks the
+originating account, session generation, and class before displaying an image.
+Protected images are not stored in Glide's disk or memory caches. Returning to the
+underlying screen leaves its layout independent of image dimensions.
